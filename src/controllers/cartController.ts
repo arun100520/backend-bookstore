@@ -1,0 +1,115 @@
+import { Request, Response, NextFunction } from 'express';
+import Cart from '../models/Cart.js';
+import Book from '../models/Book.js';
+import { AppError } from '../middleware/errorHandler.js';
+
+/** Helper to get or create cart for user */
+async function getCart(userId: string) {
+  let cart = await Cart.findOne({ user: userId }).populate('items.book', 'title slug priceInPaise coverUrl authors');
+  if (!cart) {
+    cart = await Cart.create({ user: userId, items: [] });
+  }
+  return cart;
+}
+
+// ── GET /api/cart ────────────────────────────────────────────────────────────
+export async function getCartHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const cart = await getCart(req.user!.userId);
+    const total = await (Cart as any).calculateTotal(req.user!.userId);
+    res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/cart/items ──────────────────────────────────────────────────────
+export async function addItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { bookId, quantity = 1 } = req.body;
+    
+    if (!bookId) {
+      throw new AppError(400, 'bookId is required');
+    }
+
+    const book = await Book.findById(bookId);
+    if (!book || !book.isActive) {
+      throw new AppError(404, 'Book not found or inactive');
+    }
+
+    let cart = await Cart.findOne({ user: req.user!.userId });
+    if (!cart) {
+      cart = new Cart({ user: req.user!.userId, items: [] });
+    }
+
+    const existingItemIndex = cart.items.findIndex((item) => item.book.toString() === bookId);
+    if (existingItemIndex > -1) {
+      cart.items[existingItemIndex].quantity += Number(quantity);
+    } else {
+      cart.items.push({ book: bookId, quantity: Number(quantity) });
+    }
+
+    await cart.save();
+    
+    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    const total = await (Cart as any).calculateTotal(req.user!.userId);
+    
+    res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── PATCH /api/cart/items/:bookId ─────────────────────────────────────────────
+export async function updateItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { bookId } = req.params;
+    const { quantity } = req.body;
+
+    if (quantity === undefined || quantity < 1) {
+      throw new AppError(400, 'quantity must be at least 1');
+    }
+
+    let cart = await Cart.findOne({ user: req.user!.userId });
+    if (!cart) {
+      throw new AppError(404, 'Cart not found');
+    }
+
+    const existingItem = cart.items.find((item) => item.book.toString() === bookId);
+    if (!existingItem) {
+      throw new AppError(404, 'Item not found in cart');
+    }
+
+    existingItem.quantity = Number(quantity);
+    await cart.save();
+    
+    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    const total = await (Cart as any).calculateTotal(req.user!.userId);
+    
+    res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── DELETE /api/cart/items/:bookId ────────────────────────────────────────────
+export async function removeItem(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { bookId } = req.params;
+
+    let cart = await Cart.findOne({ user: req.user!.userId });
+    if (!cart) {
+      throw new AppError(404, 'Cart not found');
+    }
+
+    cart.items = cart.items.filter((item) => item.book.toString() !== bookId);
+    await cart.save();
+    
+    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    const total = await (Cart as any).calculateTotal(req.user!.userId);
+    
+    res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
+  } catch (err) {
+    next(err);
+  }
+}
