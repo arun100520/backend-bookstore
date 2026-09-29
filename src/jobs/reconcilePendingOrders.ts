@@ -94,8 +94,12 @@ export function reconciliationConfig(env = process.env) {
   const minAgeMs = env.RECONCILIATION_MIN_AGE_SECONDS !== undefined
     ? seconds('RECONCILIATION_MIN_AGE_SECONDS', 10)
     : minutes('RECONCILIATION_MIN_AGE_MINUTES', 15);
+  // RECONCILIATION_INTERVAL_SECONDS takes priority over RECONCILIATION_INTERVAL_MINUTES
+  const intervalMs = env.RECONCILIATION_INTERVAL_SECONDS !== undefined
+    ? seconds('RECONCILIATION_INTERVAL_SECONDS', 30)
+    : minutes('RECONCILIATION_INTERVAL_MINUTES', 5);
   return { enabled: env.RECONCILIATION_ENABLED !== 'false',
-    intervalMs: minutes('RECONCILIATION_INTERVAL_MINUTES', 5),
+    intervalMs,
     minAgeMs };
 }
 
