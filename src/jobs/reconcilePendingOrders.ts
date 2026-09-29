@@ -82,12 +82,21 @@ export function reconciliationConfig(env = process.env) {
     if (!Number.isInteger(value) || value < 1 || value > 1440) throw new Error(`${name} must be an integer from 1 to 1440`);
     return value * 60_000;
   }
+  function seconds(name: string, fallback: number) {
+    const value = env[name] === undefined ? fallback : Number(env[name]);
+    if (!Number.isInteger(value) || value < 1 || value > 86400) throw new Error(`${name} must be an integer from 1 to 86400`);
+    return value * 1_000;
+  }
   if (env.RECONCILIATION_ENABLED !== undefined && !['true', 'false'].includes(env.RECONCILIATION_ENABLED)) {
     throw new Error('RECONCILIATION_ENABLED must be true or false');
   }
+  // RECONCILIATION_MIN_AGE_SECONDS takes priority over RECONCILIATION_MIN_AGE_MINUTES
+  const minAgeMs = env.RECONCILIATION_MIN_AGE_SECONDS !== undefined
+    ? seconds('RECONCILIATION_MIN_AGE_SECONDS', 10)
+    : minutes('RECONCILIATION_MIN_AGE_MINUTES', 15);
   return { enabled: env.RECONCILIATION_ENABLED !== 'false',
     intervalMs: minutes('RECONCILIATION_INTERVAL_MINUTES', 5),
-    minAgeMs: minutes('RECONCILIATION_MIN_AGE_MINUTES', 15) };
+    minAgeMs };
 }
 
 export async function reconcilePendingOrders(options: { now?: Date; minAgeMs?: number; orderId?: string } = {}) {
