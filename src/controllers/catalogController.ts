@@ -38,7 +38,7 @@ export async function getBooks(req: Request, res: Response, next: NextFunction):
         .populate('language', 'name slug')
         .skip(skip)
         .limit(limitNum)
-        .sort(q ? { score: { $meta: 'textScore' } } : { createdAt: -1 }),
+        .sort(q ? { score: { $meta: 'textScore' }, _id: -1 } : { createdAt: -1, _id: -1 }),
       Book.countDocuments(query),
     ]);
 

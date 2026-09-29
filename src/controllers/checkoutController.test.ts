@@ -106,6 +106,8 @@ test('creates a price snapshot for the authenticated cart and ignores client-sup
   assert.equal(state.order!.cashfreeOrderId, state.request!.order_id);
   assert.equal(state.request!.order_amount, 41.01);
   assert.equal(state.request!.order_currency, 'INR');
+  assert.equal(state.request!.order_meta!.return_url, new URL(`/checkout/return?orderId=${state.order!._id}`, process.env.CLIENT_URL || 'http://localhost:5173').toString());
+  assert.equal(result.body.data.paymentMode, 'sandbox');
   assert.deepEqual(state.request!.customer_details, {
     customer_id: userId, customer_phone: '9999999999',
     customer_name: 'Test Reader', customer_email: 'reader@example.com',

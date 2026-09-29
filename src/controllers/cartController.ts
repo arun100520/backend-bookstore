@@ -3,9 +3,16 @@ import Cart from '../models/Cart.js';
 import Book from '../models/Book.js';
 import { AppError } from '../middleware/errorHandler.js';
 
+const cartBookPopulation = {
+  path: 'items.book',
+  select: 'title slug priceInPaise coverUrl authors isActive',
+  // Keep the reference for removal when a book has been deleted.
+  transform: (book: unknown, id: unknown) => book ?? { _id: id, title: 'Unavailable book', isActive: false },
+};
+
 /** Helper to get or create cart for user */
 async function getCart(userId: string) {
-  let cart = await Cart.findOne({ user: userId }).populate('items.book', 'title slug priceInPaise coverUrl authors');
+  let cart = await Cart.findOne({ user: userId }).populate(cartBookPopulation);
   if (!cart) {
     cart = await Cart.create({ user: userId, items: [] });
   }
@@ -51,7 +58,7 @@ export async function addItem(req: Request, res: Response, next: NextFunction): 
 
     await cart.save();
     
-    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    cart = await cart.populate(cartBookPopulation);
     const total = await (Cart as any).calculateTotal(req.user!.userId);
     
     res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
@@ -83,7 +90,7 @@ export async function updateItem(req: Request, res: Response, next: NextFunction
     existingItem.quantity = Number(quantity);
     await cart.save();
     
-    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    cart = await cart.populate(cartBookPopulation);
     const total = await (Cart as any).calculateTotal(req.user!.userId);
     
     res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });
@@ -105,7 +112,7 @@ export async function removeItem(req: Request, res: Response, next: NextFunction
     cart.items = cart.items.filter((item) => item.book.toString() !== bookId);
     await cart.save();
     
-    cart = await cart.populate('items.book', 'title slug priceInPaise coverUrl authors');
+    cart = await cart.populate(cartBookPopulation);
     const total = await (Cart as any).calculateTotal(req.user!.userId);
     
     res.status(200).json({ data: cart, meta: { totalPriceInPaise: total } });

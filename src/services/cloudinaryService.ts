@@ -67,19 +67,38 @@ export async function uploadPdf(
 /**
  * Generates a short-lived signed URL for a private PDF.
  * @param publicId  The Cloudinary public_id stored on the Book document
- * @param expiresIn Seconds until expiry (default: 60 minutes)
+ * @param expiresIn Seconds until expiry (default: five minutes)
  */
 export function generateSignedPdfUrl(
   publicId: string,
-  expiresIn: number = 60 * 60,
+  expiresIn: number = 300,
 ): string {
+  if (!publicId || !Number.isInteger(expiresIn) || expiresIn < 1 || expiresIn > 3600) {
+    throw new Error('Invalid private download parameters');
+  }
   const expiresAt = Math.floor(Date.now() / 1000) + expiresIn;
 
-  return cloudinary.url(publicId, {
+  return cloudinary.utils.private_download_url(publicId, 'pdf', {
     resource_type: 'raw',
     type: 'private',
-    sign_url: true,
     expires_at: expiresAt,
-    secure: true,
+    attachment: true,
   });
+}
+
+/** Existing books store the upload's secure_url rather than a separate public ID. */
+export function pdfPublicIdFromUrl(pdfUrl: string): string {
+  const url = new URL(pdfUrl);
+  const cloudName = cloudinary.config().cloud_name;
+  const prefix = `/${cloudName}/raw/private/`;
+  if (!cloudName || url.protocol !== 'https:' || url.hostname !== 'res.cloudinary.com' ||
+      url.port || url.username || url.password || url.search || url.hash || !url.pathname.startsWith(prefix)) {
+    throw new Error('Unsupported private PDF URL');
+  }
+  const publicId = decodeURIComponent(url.pathname.slice(prefix.length)
+    .replace(/^s--[A-Za-z0-9_-]+--\//, '').replace(/^v\d+\//, ''));
+  if (!publicId.startsWith(`${PDF_FOLDER}/`) || publicId.endsWith('/') || publicId.split('/').some(part => !part || part === '.' || part === '..')) {
+    throw new Error('Unsupported private PDF public ID');
+  }
+  return publicId;
 }

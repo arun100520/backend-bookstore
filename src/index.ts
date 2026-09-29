@@ -9,13 +9,18 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import authRoutes from './routes/authRoutes.js';
 import adminBookRoutes from './routes/adminBookRoutes.js';
+import adminOrderRoutes from './routes/adminOrderRoutes.js';
 import adminTaxonomyRoutes from './routes/adminTaxonomyRoutes.js';
 import catalogRoutes from './routes/catalogRoutes.js';
 import cartRoutes from './routes/cartRoutes.js';
 import checkoutRoutes from './routes/checkoutRoutes.js';
+import orderRoutes from './routes/orderRoutes.js';
+import libraryRoutes from './routes/libraryRoutes.js';
+import userRoutes from './routes/userRoutes.js';
 import webhookRoutes from './routes/webhookRoutes.js';
 import PaymentEvent from './models/PaymentEvent.js';
 import Entitlement from './models/Entitlement.js';
+import { reconciliationConfig, startReconciliationJob } from './jobs/reconcilePendingOrders.js';
 
 dotenv.config();
 
@@ -44,7 +49,11 @@ app.use('/api', catalogRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/cart', cartRoutes);
 app.use('/api/checkout', checkoutRoutes);
+app.use('/api/orders', orderRoutes);
+app.use('/api/library', libraryRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/admin/books', adminBookRoutes);
+app.use('/api/admin/orders', adminOrderRoutes);
 app.use('/api/admin/taxonomy', adminTaxonomyRoutes);
 
 // ── 404 + error handlers (must be last) ──────────────────────────────────────
@@ -53,12 +62,14 @@ app.use(errorHandler);
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function start() {
+  reconciliationConfig();
   await connectDB(); // exits process on failure
   await Promise.all([PaymentEvent.init(), Entitlement.init()]);
   configureCloudinary(); // warns if vars missing but doesn't block
   app.listen(PORT, () => {
     console.log(`[server] Running on http://localhost:${PORT}`);
   });
+  startReconciliationJob();
 }
 
 // Importing the app for HTTP tests must not start a second server or DB connection.

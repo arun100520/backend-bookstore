@@ -22,6 +22,9 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
       });
     }
 
+    const clientUrl = new URL(process.env.CLIENT_URL || 'http://localhost:5173');
+    if (!['http:', 'https:'].includes(clientUrl.protocol)) throw new AppError(500, 'Checkout return URL is not configured');
+
     const userId = req.user!.userId;
     const user = await User.findById(userId).select('name email');
     if (!user) throw new AppError(401, 'User no longer exists');
@@ -63,6 +66,9 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
         order_id: order.cashfreeOrderId,
         order_amount: amountInPaise / 100,
         order_currency: order.currency,
+        order_meta: {
+          return_url: new URL(`/checkout/return?orderId=${order._id}`, clientUrl).toString(),
+        },
         customer_details: {
           customer_id: userId,
           customer_phone: input.data.customerPhone,
@@ -99,6 +105,7 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
       currency: order.currency,
       status: order.status,
       payment_session_id: payment.payment_session_id,
+      paymentMode: process.env.CASHFREE_ENV?.trim() || 'sandbox',
     } });
   } catch (err) {
     next(err);

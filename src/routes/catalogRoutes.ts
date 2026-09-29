@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getHome } from '../controllers/homeController.js';
 import {
   getBooks,
   getBookBySlug,
@@ -11,6 +12,7 @@ import {
 const router = Router();
 
 // Public routes
+router.get('/home', getHome);
 router.get('/books', getBooks);
 router.get('/books/:slug', getBookBySlug);
 router.get('/categories', getCategories);

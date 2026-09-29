@@ -7,6 +7,7 @@ import type { OrderStatus } from '../types/index.js';
 export interface ProjectionEvent {
   eventType: string;
   signatureVerified: boolean;
+  source?: 'webhook' | 'reconciliation';
 }
 
 /**
@@ -19,7 +20,8 @@ export interface ProjectionEvent {
 export function computeOrderStatus(events: readonly ProjectionEvent[]): OrderStatus {
   let status: OrderStatus = 'created';
   for (const event of events) {
-    if (event.signatureVerified !== true) continue;
+    // Reconciliation is authenticated by the server-to-server API, not a webhook signature.
+    if (event.signatureVerified !== true && event.source !== 'reconciliation') continue;
     if (event.eventType === 'REFUND_SUCCESS') return 'refunded';
     if (event.eventType === 'PAYMENT_SUCCESS') status = 'paid';
     else if (event.eventType === 'PAYMENT_FAILED' && status === 'created') status = 'failed';
@@ -45,7 +47,7 @@ export async function reduceOrderStatus(orderId: string | Types.ObjectId): Promi
     const events = await PaymentEvent.find({
       order: order._id,
       ...(order.cashfreeOrderId ? { cashfreeOrderId: order.cashfreeOrderId } : {}),
-    }).select('eventType signatureVerified').lean();
+    }).select('eventType signatureVerified source').lean();
     const status = computeOrderStatus(events);
     const updated = await Order.findOneAndUpdate(
       { _id: order._id, __v: order.__v },
