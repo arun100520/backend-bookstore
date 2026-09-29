@@ -6,6 +6,7 @@ import { Types } from 'mongoose';
 import { Cashfree } from 'cashfree-pg';
 import app from '../index.js';
 import Order from '../models/Order.js';
+import PaymentEvent from '../models/PaymentEvent.js';
 import { generateAccessToken } from '../utils/jwt.js';
 
 const userId = new Types.ObjectId().toString();
@@ -87,7 +88,10 @@ test('history scopes records and count to the caller, with stable pagination', a
 test('order details return the owner snapshot and conceal other users orders', async t => {
   const stored = { _id: orderId, items: [{ book: 'book-id', quantity: 2, priceAtPurchase: 150 }], amountInPaise: 300, status: 'paid' };
   t.mock.method(Order, 'findOne', (filter: { _id: string; user: string }) => ({ select: () => ({
-    lean: async () => filter.user === userId && filter._id === orderId ? stored : null,
+    populate: (path: string, fields: string) => {
+      assert.equal(path, 'items.book'); assert.equal(fields, '_id title slug');
+      return { lean: async () => filter.user === userId && filter._id === orderId ? stored : null };
+    },
   }) }));
   const own = await requestOrders(`/${orderId}`);
   assert.equal(own.status, 200);
@@ -144,4 +148,40 @@ test('another user cannot read the status, and missing orders have the same 404'
 test('database failures use the central error handler', async t => {
   t.mock.method(Order, 'findOne', () => ({ select: () => ({ lean: async () => { throw new Error('Database unavailable'); } }) }));
   assert.equal((await get()).status, 500);
+});
+
+test('customer timeline requires authentication and validates IDs before querying', async t => {
+  const owned = t.mock.method(Order, 'exists', () => { throw new Error('Unexpected query'); });
+  assert.equal((await requestOrders(`/${orderId}/events`, null)).status, 401);
+  assert.equal((await requestOrders('/invalid/events')).status, 400);
+  assert.equal(owned.mock.callCount(), 0);
+});
+
+test('customer timeline checks ownership before querying events, including unknown orders', async t => {
+  t.mock.method(Order, 'exists', async (filter: unknown) => {
+    assert.deepEqual(filter, { _id: orderId, user: userId }); return null;
+  });
+  const events = t.mock.method(PaymentEvent, 'find', () => { throw new Error('Must not query events'); });
+  assert.equal((await requestOrders(`/${orderId}/events`)).status, 404);
+  assert.equal(events.mock.callCount(), 0);
+});
+
+test('customer timeline returns only safe, trusted event summaries in stable time order', async t => {
+  t.mock.method(Order, 'exists', async (filter: unknown) => {
+    assert.deepEqual(filter, { _id: orderId, user: userId }); return { _id: orderId };
+  });
+  t.mock.method(PaymentEvent, 'find', (filter: unknown) => {
+    assert.deepEqual(filter, { order: orderId, $or: [{ signatureVerified: true }, { source: 'reconciliation' }],
+      eventType: { $in: ['PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'PAYMENT_PENDING', 'REFUND_SUCCESS'] } });
+    return { select: (fields: string) => {
+      assert.equal(fields, '_id eventType receivedAt');
+      return { sort: (sort: unknown) => {
+        assert.deepEqual(sort, { receivedAt: 1, _id: 1 });
+        return { lean: async () => [{ _id: 'event', eventType: 'PAYMENT_SUCCESS', receivedAt: '2026-09-29', rawPayload: { secret: 'private' }, cashfreeEventId: 'private' }] };
+      } };
+    } };
+  });
+  const result = await requestOrders(`/${orderId}/events`);
+  assert.equal(result.status, 200); assert.equal(result.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await result.json(), { data: [{ _id: 'event', eventType: 'PAYMENT_SUCCESS', receivedAt: '2026-09-29' }] });
 });

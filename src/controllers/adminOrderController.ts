@@ -33,6 +33,16 @@ export async function listAdminOrders(req: Request, res: Response, next: NextFun
     res.json({ data: orders, meta: { total, page, limit, totalPages: Math.ceil(total / limit) } });
   } catch (err) { next(err); }
 }
+export async function getAdminOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!isObjectIdOrHexString(req.params.id)) throw new AppError(400, 'Invalid order ID');
+    const order = await Order.findById(req.params.id)
+      .select('_id user orderNumber items amountInPaise currency status cashfreeOrderId createdAt updatedAt').lean();
+    if (!order) throw new AppError(404, 'Order not found');
+    res.json({ data: order });
+  } catch (err) { next(err); }
+}
 export async function getOrderEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
   res.set('Cache-Control', 'no-store');
   try {

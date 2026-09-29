@@ -35,11 +35,22 @@ async function request(path = '', role: 'admin' | 'user' | null = 'admin') {
 test('all admin order routes reject anonymous and non-admin callers before data access', async t => {
   const read = t.mock.method(Order, 'findById', () => { throw new Error('Unexpected read'); });
   const list = t.mock.method(Order, 'find', () => { throw new Error('Unexpected list'); });
-  for (const path of ['', `/${id}/events`, `/${id}/resync`]) {
+  for (const path of ['', `/${id}`, `/${id}/events`, `/${id}/resync`]) {
     assert.equal((await request(path, null)).status, 401);
     assert.equal((await request(path, 'user')).status, 403);
   }
   assert.equal(read.mock.callCount() + list.mock.callCount(), 0);
+});
+
+test('admin order details validate IDs, select receipt fields and handle missing orders', async t => {
+  let stored: unknown = { _id: id, user: 'another-user', status: 'paid' };
+  t.mock.method(Order, 'findById', (value: unknown) => {
+    assert.equal(value, id);
+    return { select: (fields: string) => { assert.equal(fields, '_id user orderNumber items amountInPaise currency status cashfreeOrderId createdAt updatedAt'); return { lean: async () => stored }; } };
+  });
+  assert.equal((await request('/bad')).status, 400);
+  assert.deepEqual((await request(`/${id}`)).body, { data: stored });
+  stored = null; assert.equal((await request(`/${id}`)).status, 404);
 });
 test('invalid IDs and pagination return 400; missing orders return 404', async t => {
   t.mock.method(Order, 'findById', async () => null);

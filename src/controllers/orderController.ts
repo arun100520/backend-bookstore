@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { isObjectIdOrHexString } from 'mongoose';
 import { z } from 'zod';
 import Order from '../models/Order.js';
+import PaymentEvent from '../models/PaymentEvent.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const orderFields = '_id orderNumber items amountInPaise currency status createdAt updatedAt';
@@ -31,9 +32,26 @@ export async function getOrder(req: Request, res: Response, next: NextFunction):
   try {
     if (!isObjectIdOrHexString(req.params.id)) throw new AppError(400, 'Invalid order ID');
     const order = await Order.findOne({ _id: req.params.id, user: req.user!.userId })
-      .select(orderFields).lean();
+      .select(orderFields).populate('items.book', '_id title slug').lean();
     if (!order) throw new AppError(404, 'Order not found');
     res.status(200).json({ data: order });
+  } catch (err) { next(err); }
+}
+
+export async function getOrderEvents(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.set('Cache-Control', 'no-store');
+  try {
+    if (!isObjectIdOrHexString(req.params.id)) throw new AppError(400, 'Invalid order ID');
+    const owned = await Order.exists({ _id: req.params.id, user: req.user!.userId });
+    if (!owned) throw new AppError(404, 'Order not found');
+    const events = await PaymentEvent.find({ order: req.params.id,
+      $or: [{ signatureVerified: true }, { source: 'reconciliation' }],
+      eventType: { $in: ['PAYMENT_SUCCESS', 'PAYMENT_FAILED', 'PAYMENT_PENDING', 'REFUND_SUCCESS'] },
+    }).select('_id eventType receivedAt').sort({ receivedAt: 1, _id: 1 }).lean();
+    // Explicit DTO prevents provider payloads or identifiers reaching customer pages.
+    res.status(200).json({ data: events.map(event => ({
+      _id: String(event._id), eventType: event.eventType, receivedAt: event.receivedAt,
+    })) });
   } catch (err) { next(err); }
 }
 
