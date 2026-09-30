@@ -44,8 +44,8 @@ afterEach(() => envKeys.forEach((key, i) => {
 function fixtures(t: TestContext) {
   const state = {
     user: { name: 'Test Reader', email: 'reader@example.com' } as { name: string; email: string } | null,
-    cart: { items: [{ book: bookId, quantity: 2 }, { book: otherBookId, quantity: 1 }] } as
-      { items: { book: Types.ObjectId; quantity: number }[] } | null,
+    cart: { items: [{ _id: new Types.ObjectId(), book: bookId, quantity: 2 }, { _id: new Types.ObjectId(), book: otherBookId, quantity: 1 }] } as
+      { items: { _id: Types.ObjectId; book: Types.ObjectId; quantity: number }[] } | null,
     books: [
       { _id: bookId, priceInPaise: 1051, isActive: true },
       { _id: otherBookId, priceInPaise: 1999, isActive: true },
@@ -102,6 +102,8 @@ test('creates a price snapshot for the authenticated cart and ignores client-sup
   assert.equal(String(state.order!.user), userId);
   assert.equal(state.order!.items[0].priceAtPurchase, 1051);
   assert.equal(state.order!.items[0].quantity, 2);
+  assert.equal(String(state.order!.items[0].cartItemId), String(state.cart!.items[0]._id));
+  assert.equal(String(state.order!.items[1].cartItemId), String(state.cart!.items[1]._id));
   assert.equal(state.order!.items[1].priceAtPurchase, 1999);
   assert.equal(state.order!.cashfreeOrderId, state.request!.order_id);
   assert.equal(state.request!.order_amount, 41.01);

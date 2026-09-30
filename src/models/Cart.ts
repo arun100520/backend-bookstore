@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Types, Model } from 'mongoose';
 
 export interface ICartItem {
+  _id?: Types.ObjectId;
   book: Types.ObjectId;
   quantity: number;
 }

@@ -8,6 +8,7 @@ import app from '../index.js';
 import Order from '../models/Order.js';
 import PaymentEvent from '../models/PaymentEvent.js';
 import Entitlement from '../models/Entitlement.js';
+import Cart from '../models/Cart.js';
 import * as projection from '../services/orderProjection.js';
 
 let server: Server;
@@ -16,6 +17,7 @@ const originalSecret = process.env.CASHFREE_SECRET_KEY;
 const bookId = new Types.ObjectId();
 const userId = new Types.ObjectId();
 const orderId = new Types.ObjectId();
+const cartItemId = new Types.ObjectId();
 
 before(async () => {
   server = app.listen(0, '127.0.0.1');
@@ -42,7 +44,7 @@ function payload(status = 'SUCCESS', paymentId: string | number = '12345') {
 }
 function fixtures(t: TestContext) {
   const order = { _id: orderId, user: userId, amountInPaise: 1050, currency: 'INR',
-    items: [{ book: bookId }, { book: bookId }] };
+    items: [{ cartItemId, book: bookId, quantity: 1 }, { book: bookId, quantity: 1 }] };
   const events = new Map<string, { eventType: string; signatureVerified: boolean }>();
   const find = t.mock.method(Order, 'findOne', async (filter: unknown): Promise<typeof order | null> => {
     assert.deepEqual(filter, { cashfreeOrderId: 'merchant_order' });
@@ -60,7 +62,13 @@ function fixtures(t: TestContext) {
     assert.deepEqual(update, { $setOnInsert: { user: userId, book: String(bookId), order: orderId } });
     return {};
   });
-  return { find, insert, grant, reduce, events };
+  const cleanCart = t.mock.method(Cart, 'updateOne', async (filter: unknown, update: unknown) => {
+    assert.ok(grant.mock.callCount() > 0, 'Grant access before removing the purchased cart line');
+    assert.deepEqual(filter, { user: userId });
+    assert.deepEqual(update, { $pull: { items: { $or: [{ _id: cartItemId, book: bookId, quantity: 1 }] } } });
+    return {};
+  });
+  return { find, insert, grant, reduce, events, cleanCart };
 }
 async function post(value: unknown, options: { raw?: string; signedRaw?: string; signature?: string;
   timestamp?: string; headers?: Record<string, string> } = {}) {
@@ -119,14 +127,25 @@ test('a success is normalized, duplicates keep one event, and duplicate book lin
   assert.equal(reduce.mock.callCount(), 2);
 });
 
-test('different attempts/statuses remain distinct; failed or dropped payments grant nothing', async (t) => {
-  const { events, grant } = fixtures(t);
+test('different attempts/statuses remain distinct; only confirmed payment removes purchased cart lines', async (t) => {
+  const { events, grant, cleanCart } = fixtures(t);
   assert.equal((await post(payload('FAILED'))).status, 200);
   assert.equal((await post(payload('USER_DROPPED', '12346'))).status, 200);
   assert.equal(grant.mock.callCount(), 0);
+  assert.equal(cleanCart.mock.callCount(), 0);
   assert.equal((await post(payload('SUCCESS'))).status, 200);
   assert.equal(events.size, 3);
   assert.equal(grant.mock.callCount(), 1);
+  assert.equal(cleanCart.mock.callCount(), 1);
+});
+
+test('redelivery retries cart cleanup after a temporary failure', async t => {
+  const { cleanCart } = fixtures(t);
+  t.mock.method(console, 'error', () => {});
+  cleanCart.mock.mockImplementationOnce(async () => { throw new Error('temporary DB outage'); });
+  assert.equal((await post(payload())).status, 500);
+  assert.equal((await post(payload())).status, 200);
+  assert.equal(cleanCart.mock.callCount(), 2);
 });
 
 test('unknown orders and incorrect money/status are rejected before event insertion', async (t) => {

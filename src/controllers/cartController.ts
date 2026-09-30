@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import Cart from '../models/Cart.js';
 import Book from '../models/Book.js';
-import Entitlement from '../models/Entitlement.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const cartBookPopulation = {
@@ -13,12 +12,8 @@ const cartBookPopulation = {
 
 /** Helper to get or create cart for user */
 async function getCart(userId: string) {
-  // Ownership is durable confirmation of fulfilment, including payments that
-  // finish after the customer leaves checkout and older purchases.
-  const ownedBooks = await Entitlement.find({ user: userId }).distinct('book');
-  if (ownedBooks.length) {
-    await Cart.updateOne({ user: userId }, { $pull: { items: { book: { $in: ownedBooks } } } });
-  }
+  // Reading a cart must preserve its contents, including books added again
+  // after an earlier purchase. Only confirmed payment removes purchased lines.
   let cart = await Cart.findOne({ user: userId }).populate(cartBookPopulation);
   if (!cart) {
     cart = await Cart.create({ user: userId, items: [] });

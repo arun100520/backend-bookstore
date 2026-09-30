@@ -5,6 +5,7 @@ import PaymentEvent from '../models/PaymentEvent.js';
 import Entitlement from '../models/Entitlement.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { reduceOrderStatus } from './orderProjection.js';
+import { removePurchasedCartItems } from './purchasedCart.js';
 
 const providerId = z.union([z.string().min(1).max(200), z.number().int().nonnegative().safe()])
   .transform(String);
@@ -123,4 +124,5 @@ export async function processCashfreeWebhook(rawPayload: unknown): Promise<void>
       if (!duplicateKey(error) || !await Entitlement.exists(entitlementFilter)) throw error;
     }
   }
+  await removePurchasedCartItems(order);
 }

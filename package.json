@@ -8,7 +8,7 @@
     "start": "node dist/index.js",
     "seed": "tsx src/scripts/seed.ts",
     "reconcile": "npm run build && node dist/scripts/reconcilePendingOrders.js",
-    "test:reconciliation": "npm run build && node --test dist/jobs/reconcilePendingOrders.test.js dist/services/orderProjection.test.js",
+    "test:reconciliation": "npm run build && node --test dist/jobs/reconcilePendingOrders.test.js dist/services/orderProjection.test.js dist/services/purchasedCart.test.js",
     "test:reconciliation:db": "npm run build && node dist/scripts/testReconciliation.js",
     "test:order-status": "npm run build && node --test dist/controllers/orderController.test.js",
     "test:orders:db": "npm run build && node dist/scripts/testOrders.js",
@@ -19,11 +19,11 @@
     "test:library:integration": "npm run build && node dist/scripts/testLibrary.js",
     "test:cashfree": "npm run build && node --test dist/services/cashfreeService.test.js",
     "test:cashfree:sandbox": "npm run build && node dist/scripts/testCashfree.js",
-    "test:checkout": "npm run build && node --test dist/controllers/checkoutController.test.js dist/services/cashfreeService.test.js",
+    "test:checkout": "npm run build && node --test dist/controllers/cartController.test.js dist/controllers/checkoutController.test.js dist/services/cashfreeService.test.js dist/services/purchasedCart.test.js",
     "test:checkout:sandbox": "npm run build && node dist/scripts/testCheckout.js",
     "test:projection": "npm run build && node --test dist/services/orderProjection.test.js",
     "test:projection:db": "npm run build && node dist/scripts/testOrderProjection.js",
-    "test:webhooks": "npm run build && node --test dist/controllers/webhookController.test.js dist/controllers/checkoutController.test.js dist/services/orderProjection.test.js dist/services/cashfreeService.test.js",
+    "test:webhooks": "npm run build && node --test dist/controllers/webhookController.test.js dist/controllers/checkoutController.test.js dist/services/orderProjection.test.js dist/services/cashfreeService.test.js dist/services/purchasedCart.test.js",
     "test:webhooks:db": "npm run build && node dist/scripts/testCashfreeWebhook.js"
   },
   "dependencies": {

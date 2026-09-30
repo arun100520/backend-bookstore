@@ -46,7 +46,7 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
       }
       amountInPaise += book.priceInPaise * item.quantity;
       if (!Number.isSafeInteger(amountInPaise)) throw new AppError(400, 'Cart total is too large');
-      return { book: item.book, quantity: item.quantity, priceAtPurchase: book.priceInPaise };
+      return { cartItemId: item._id, book: item.book, quantity: item.quantity, priceAtPurchase: book.priceInPaise };
     });
     if (amountInPaise < 100) throw new AppError(400, 'Cashfree checkout requires a total of at least INR 1');
 

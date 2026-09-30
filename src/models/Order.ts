@@ -1,6 +1,7 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export interface IOrderItem {
+  cartItemId?: Types.ObjectId; // Exact cart line selected for this checkout
   book: Types.ObjectId;
   quantity: number;
   priceAtPurchase: number; // Snapshot of the price in paise at the time of order
@@ -19,6 +20,7 @@ export interface IOrder extends Document {
 }
 
 const orderItemSchema = new Schema<IOrderItem>({
+  cartItemId: { type: Schema.Types.ObjectId },
   book: { type: Schema.Types.ObjectId, ref: 'Book', required: true },
   quantity: { type: Number, required: true, default: 1, min: 1 },
   priceAtPurchase: { type: Number, required: true },

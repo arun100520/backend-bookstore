@@ -4,11 +4,51 @@ import { Types } from 'mongoose';
 import { Cashfree } from 'cashfree-pg';
 import Order from '../models/Order.js';
 import PaymentEvent from '../models/PaymentEvent.js';
+import Cart from '../models/Cart.js';
+import Entitlement from '../models/Entitlement.js';
+import * as projection from '../services/orderProjection.js';
 import { computeOrderStatus } from '../services/orderProjection.js';
 import { reconciliationConfig, reconciliationEventType, reconcilePendingOrders } from './reconcilePendingOrders.js';
 
 const order = { cashfreeOrderId: 'merchant_1', amountInPaise: 1051, currency: 'INR' };
 const snapshot = { order_id: 'merchant_1', order_amount: 10.51, order_currency: 'INR', order_status: 'PAID' };
+
+test('reconciliation removes the checkout snapshot only after verified payment and retries incomplete cleanup', async t => {
+  const cartItemId = new Types.ObjectId();
+  const paidOrder = { ...order, _id: new Types.ObjectId(), user: new Types.ObjectId(),
+    items: [{ cartItemId, book: new Types.ObjectId(), quantity: 1 }] };
+  const event = { _id: new Types.ObjectId(), order: paidOrder._id, cashfreeOrderId: order.cashfreeOrderId };
+  t.mock.method(PaymentEvent, 'find', () => ({ cursor: async function* () { yield event; } }));
+  t.mock.method(Order, 'find', () => ({ sort: () => ({ cursor: async function* () {} }) }));
+  t.mock.method(Order, 'findOne', async () => paidOrder);
+  let status: 'created' | 'failed' | 'paid' = 'created';
+  t.mock.method(projection, 'reduceOrderStatus', async () => status);
+  const grant = t.mock.method(Entitlement, 'updateOne', async () => ({}));
+  const processed = t.mock.method(PaymentEvent, 'updateOne', async () => ({}));
+  let unavailable = true;
+  const cleanCart = t.mock.method(Cart, 'updateOne', async (filter: unknown, update: unknown) => {
+    assert.equal(status, 'paid');
+    assert.ok(grant.mock.callCount() > 0);
+    assert.deepEqual(filter, { user: paidOrder.user });
+    assert.deepEqual(update, { $pull: { items: { $or: [{ _id: cartItemId, book: paidOrder.items[0].book, quantity: 1 }] } } });
+    if (unavailable) throw new Error('temporary DB outage');
+    return {};
+  });
+  for (const pending of ['created', 'failed'] as const) {
+    status = pending;
+    await reconcilePendingOrders();
+  }
+  assert.equal(cleanCart.mock.callCount(), 0);
+  assert.equal(grant.mock.callCount(), 0);
+  const before = processed.mock.callCount();
+  status = 'paid';
+  assert.equal((await reconcilePendingOrders()).failed, 1);
+  assert.equal(processed.mock.callCount(), before, 'Keep the event retryable when cart cleanup fails');
+  unavailable = false;
+  assert.equal((await reconcilePendingOrders()).repaired, 1);
+  assert.equal(processed.mock.callCount(), before + 1);
+  assert.equal(cleanCart.mock.callCount(), 2);
+});
 
 test('maps provider order states without treating active orders as failed', () => {
   for (const [state, expected] of Object.entries({ PAID: 'PAYMENT_SUCCESS', ACTIVE: 'PAYMENT_PENDING',

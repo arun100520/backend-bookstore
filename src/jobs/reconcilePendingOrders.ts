@@ -7,6 +7,7 @@ import PaymentEvent from '../models/PaymentEvent.js';
 import Entitlement from '../models/Entitlement.js';
 import { getOrderStatus } from '../services/cashfreeService.js';
 import { reduceOrderStatus } from '../services/orderProjection.js';
+import { removePurchasedCartItems } from '../services/purchasedCart.js';
 
 const snapshotSchema = z.object({
   order_id: z.string().min(1),
@@ -44,6 +45,7 @@ async function completeEvent(event: { _id: unknown; order: unknown; cashfreeOrde
         if (!duplicateKey(error) || !await Entitlement.exists(filter)) throw error;
       }
     }
+    await removePurchasedCartItems(order);
   }
   await PaymentEvent.updateOne({ _id: String(event._id) }, { $set: { processedAt: new Date() } });
   return status;
