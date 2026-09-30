@@ -1,3 +1,4 @@
+import { validateBody, validateId, bookBody, bookPatch, emptyBody, validateUploads } from '../middleware/validate.js';
 import { Router } from 'express';
 import { createBook, updateBook, deleteBook, uploadBookFiles, listAdminBooks, getAdminBook } from '../controllers/adminBookController.js';
 import { authenticate, isAdmin } from '../middleware/auth.js';
@@ -10,9 +11,9 @@ router.use(authenticate, isAdmin);
 router.get('/', listAdminBooks);
 router.get('/:id', getAdminBook);
 
-router.post('/', createBook);
-router.patch('/:id', updateBook);
-router.delete('/:id', deleteBook);
-router.post('/:id/upload', uploadBookFilesMiddleware, uploadBookFiles);
+router.post('/', validateBody(bookBody), createBook);
+router.patch('/:id', validateId(), validateBody(bookPatch), updateBook);
+router.delete('/:id', validateId(), validateBody(emptyBody), deleteBook);
+router.post('/:id/upload', validateId(), uploadBookFilesMiddleware, validateBody(emptyBody), validateUploads, uploadBookFiles);
 
 export default router;

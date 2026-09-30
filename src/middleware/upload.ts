@@ -1,5 +1,6 @@
 import multer, { FileFilterCallback } from 'multer';
-import { Request } from 'express';
+import { Request, type RequestHandler } from 'express';
+import { AppError } from './errorHandler.js';
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;  // 5 MB
@@ -57,19 +58,27 @@ export const uploadPdfMiddleware = multer({
  * Combined middleware — accepts both "cover" and "pdf" fields in one multipart request.
  * Access files via req.files['cover'][0] and req.files['pdf'][0].
  */
-export const uploadBookFilesMiddleware = multer({
+const parseBookFiles = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: MAX_PDF_SIZE }, // pdf is the larger limit
+  limits: { fileSize: MAX_PDF_SIZE, files: 2, fields: 0, parts: 3 },
   fileFilter(_req, file, cb) {
     if (file.fieldname === 'cover' && file.mimetype.startsWith('image/')) {
       cb(null, true);
     } else if (file.fieldname === 'pdf' && file.mimetype === 'application/pdf') {
       cb(null, true);
     } else {
-      cb(new Error(`Unexpected field "${file.fieldname}" or wrong MIME type`));
+      cb(new AppError(400, 'Invalid upload', { [file.fieldname]: 'Unexpected file field or wrong MIME type' }));
     }
   },
 }).fields([
   { name: 'cover', maxCount: 1 },
   { name: 'pdf',   maxCount: 1 },
 ]);
+
+export const uploadBookFilesMiddleware: RequestHandler = (req, res, next) => {
+  parseBookFiles(req, res, error => {
+    if (!error || error instanceof AppError || error instanceof multer.MulterError) return next(error);
+    // Busboy parsing errors (missing boundaries, truncated multipart bodies).
+    next(new AppError(400, 'Invalid upload', { files: 'Provide a complete multipart upload with a valid boundary' }));
+  });
+};

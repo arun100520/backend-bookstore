@@ -17,9 +17,7 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
   try {
     const input = checkoutSchema.safeParse(req.body);
     if (!input.success) {
-      throw new AppError(400, 'Validation failed', {
-        customerPhone: input.error.issues[0]?.message || 'customerPhone is required',
-      });
+      throw input.error;
     }
 
     const clientUrl = new URL(process.env.CLIENT_URL || 'http://localhost:5173');

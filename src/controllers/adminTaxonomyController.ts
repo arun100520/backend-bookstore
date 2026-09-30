@@ -22,7 +22,7 @@ function createTaxonomy<T extends Document>(ModelClass: Model<T>) {
 function updateTaxonomy<T extends Document>(ModelClass: Model<T>) {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const doc = await ModelClass.findByIdAndUpdate(req.params.id, req.body, {
+      const doc = await ModelClass.findByIdAndUpdate(req.params.id, { $set: req.body }, {
         new: true,
         runValidators: true,
       });

@@ -11,7 +11,7 @@ export async function cashfreeWebhook(req: Request, res: Response, next: NextFun
     }
     let payload: unknown;
     try { payload = JSON.parse(req.body.toString('utf8')); }
-    catch { throw new AppError(400, 'Invalid webhook JSON'); }
+    catch { throw new AppError(400, 'Invalid webhook JSON', { body: 'Provide valid JSON' }); }
     await processCashfreeWebhook(payload);
     // Respond only after durable processing. Failures remain non-200 for Cashfree retries.
     res.status(200).json({ received: true });

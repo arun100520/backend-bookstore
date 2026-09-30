@@ -43,7 +43,7 @@ function duplicateKey(error: unknown): boolean {
 /** The controller MUST verify the raw-body signature before calling this function. */
 export async function processCashfreeWebhook(rawPayload: unknown): Promise<void> {
   const envelope = z.object({ type: z.string() }).safeParse(rawPayload);
-  if (!envelope.success) throw new AppError(400, 'Invalid webhook payload');
+  if (!envelope.success) throw envelope.error;
 
   let cashfreeOrderId: string;
   let identity: string[];
@@ -55,7 +55,7 @@ export async function processCashfreeWebhook(rawPayload: unknown): Promise<void>
 
   if (envelope.data.type === 'REFUND_STATUS_WEBHOOK') {
     const parsed = refundSchema.safeParse(rawPayload);
-    if (!parsed.success) throw new AppError(400, 'Invalid refund webhook payload');
+    if (!parsed.success) throw parsed.error;
     const refund = parsed.data.data.refund;
     // Auto-refunds can concern an extra/failed attempt, not the purchased order.
     if (refund.refund_type !== 'MERCHANT_INITIATED') return;
@@ -67,7 +67,7 @@ export async function processCashfreeWebhook(rawPayload: unknown): Promise<void>
     partialRefund = refund.refund_status === 'SUCCESS';
   } else if (['PAYMENT_SUCCESS_WEBHOOK', 'PAYMENT_FAILED_WEBHOOK', 'PAYMENT_USER_DROPPED_WEBHOOK'].includes(envelope.data.type)) {
     const parsed = paymentSchema.safeParse(rawPayload);
-    if (!parsed.success) throw new AppError(400, 'Invalid payment webhook payload');
+    if (!parsed.success) throw parsed.error;
     const { order, payment } = parsed.data.data;
     const expected = {
       PAYMENT_SUCCESS_WEBHOOK: 'SUCCESS', PAYMENT_FAILED_WEBHOOK: 'FAILED', PAYMENT_USER_DROPPED_WEBHOOK: 'USER_DROPPED',

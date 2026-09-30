@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import Cart from '../models/Cart.js';
 import Book from '../models/Book.js';
+import Entitlement from '../models/Entitlement.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 const cartBookPopulation = {
@@ -12,6 +13,12 @@ const cartBookPopulation = {
 
 /** Helper to get or create cart for user */
 async function getCart(userId: string) {
+  // Ownership is durable confirmation of fulfilment, including payments that
+  // finish after the customer leaves checkout and older purchases.
+  const ownedBooks = await Entitlement.find({ user: userId }).distinct('book');
+  if (ownedBooks.length) {
+    await Cart.updateOne({ user: userId }, { $pull: { items: { book: { $in: ownedBooks } } } });
+  }
   let cart = await Cart.findOne({ user: userId }).populate(cartBookPopulation);
   if (!cart) {
     cart = await Cart.create({ user: userId, items: [] });
@@ -21,6 +28,7 @@ async function getCart(userId: string) {
 
 // ── GET /api/cart ────────────────────────────────────────────────────────────
 export async function getCartHandler(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.set('Cache-Control', 'no-store');
   try {
     const cart = await getCart(req.user!.userId);
     const total = await (Cart as any).calculateTotal(req.user!.userId);
@@ -51,6 +59,9 @@ export async function addItem(req: Request, res: Response, next: NextFunction): 
 
     const existingItemIndex = cart.items.findIndex((item) => item.book.toString() === bookId);
     if (existingItemIndex > -1) {
+      if (cart.items[existingItemIndex].quantity + quantity > 1000) {
+        throw new AppError(400, 'Validation failed', { quantity: 'Total quantity must not exceed 1000' });
+      }
       cart.items[existingItemIndex].quantity += Number(quantity);
     } else {
       cart.items.push({ book: bookId, quantity: Number(quantity) });

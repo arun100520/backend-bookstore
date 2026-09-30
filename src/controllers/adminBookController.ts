@@ -53,7 +53,7 @@ export async function createBook(req: Request, res: Response, next: NextFunction
 
 export async function updateBook(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const book = await Book.findByIdAndUpdate(req.params.id, req.body, {
+    const book = await Book.findByIdAndUpdate(req.params.id, { $set: req.body }, {
       new: true,
       runValidators: true,
     });

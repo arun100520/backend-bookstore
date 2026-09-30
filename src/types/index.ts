@@ -1,4 +1,4 @@
-// ─── Shared domain types for the Ebook Store ─────────────────────────────────
+// ─── Shared domain types for the OwlChapter ─────────────────────────────────
 // NOTE: These are intentionally duplicated in frontend/src/types/index.ts
 //       (no shared package). Keep both files in sync when making changes.
 

@@ -1,3 +1,4 @@
+import { validateBody, validateId, taxonomyBody, taxonomyPatch, emptyBody } from '../middleware/validate.js';
 import { Router } from 'express';
 import {
   createCategory, updateCategory, deleteCategory,
@@ -12,18 +13,18 @@ const router = Router();
 router.use(authenticate, isAdmin);
 
 // ── Categories ────────────────────────────────────────────────────────────────
-router.post('/categories', createCategory);
-router.patch('/categories/:id', updateCategory);
-router.delete('/categories/:id', deleteCategory);
+router.post('/categories', validateBody(taxonomyBody), createCategory);
+router.patch('/categories/:id', validateId(), validateBody(taxonomyPatch), updateCategory);
+router.delete('/categories/:id', validateId(), validateBody(emptyBody), deleteCategory);
 
 // ── Genres ────────────────────────────────────────────────────────────────────
-router.post('/genres', createGenre);
-router.patch('/genres/:id', updateGenre);
-router.delete('/genres/:id', deleteGenre);
+router.post('/genres', validateBody(taxonomyBody), createGenre);
+router.patch('/genres/:id', validateId(), validateBody(taxonomyPatch), updateGenre);
+router.delete('/genres/:id', validateId(), validateBody(emptyBody), deleteGenre);
 
 // ── Languages ─────────────────────────────────────────────────────────────────
-router.post('/languages', createLanguage);
-router.patch('/languages/:id', updateLanguage);
-router.delete('/languages/:id', deleteLanguage);
+router.post('/languages', validateBody(taxonomyBody), createLanguage);
+router.patch('/languages/:id', validateId(), validateBody(taxonomyPatch), updateLanguage);
+router.delete('/languages/:id', validateId(), validateBody(emptyBody), deleteLanguage);
 
 export default router;

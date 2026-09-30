@@ -1,4 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
+import { ZodError } from 'zod';
+import { MulterError } from 'multer';
 
 /**
  * Shape of every error response the API sends.
@@ -38,6 +40,35 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  if (err instanceof ZodError) {
+    const errors: Record<string, string> = Object.create(null);
+    for (const issue of err.issues) {
+      if (issue.code === 'unrecognized_keys') {
+        for (const key of issue.keys) errors[[...issue.path, key].join('.')] = 'Unknown or protected field';
+      } else errors[issue.path.join('.') || 'body'] = issue.message;
+    }
+    res.status(400).json({ status: 400, message: 'Validation failed', errors });
+    return;
+  }
+  const parserError = err as Error & { type?: string; status?: number };
+  if (parserError.type === 'entity.parse.failed') {
+    res.status(400).json({ status: 400, message: 'Invalid JSON body', errors: { body: 'Provide valid JSON' } });
+    return;
+  }
+  if (['entity.too.large', 'encoding.unsupported', 'charset.unsupported', 'request.aborted', 'request.size.invalid'].includes(parserError.type || '')) {
+    const status = parserError.type === 'entity.too.large' ? 413 : parserError.type?.endsWith('unsupported') ? 415 : 400;
+    res.status(status).json({ status, message: 'Invalid request body', errors: { body: status === 413 ? 'Request body is too large' : 'Unsupported or incomplete request body' } });
+    return;
+  }
+  if (err instanceof MulterError) {
+    res.status(400).json({ status: 400, message: 'Invalid upload', errors: { [err.field || 'files']: err.code === 'LIMIT_FILE_SIZE' ? 'File is too large' : 'Unexpected file or upload limit exceeded' } });
+    return;
+  }
+  if (err.name === 'CastError') {
+    const field = (err as Error & { path?: string }).path || 'id';
+    res.status(400).json({ status: 400, message: 'Validation failed', errors: { [field]: 'Invalid value' } });
+    return;
+  }
   if (err instanceof AppError) {
     const body: ApiError = { status: err.statusCode, message: err.message };
     if (err.errors) body.errors = err.errors;

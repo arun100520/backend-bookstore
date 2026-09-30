@@ -29,8 +29,7 @@ export async function updateProfile(req: Request, res: Response, next: NextFunct
   try {
     const parsed = updateSchema.safeParse(req.body);
     if (!parsed.success) {
-      const errors = Object.fromEntries(parsed.error.issues.map(issue => [String(issue.path[0] ?? 'body'), issue.message]));
-      throw new AppError(400, 'Validation failed', errors);
+      throw parsed.error;
     }
     const user = await User.findByIdAndUpdate(req.user!.userId, { $set: parsed.data }, {
       returnDocument: 'after', runValidators: true,
