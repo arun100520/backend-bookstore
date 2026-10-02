@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
@@ -5,6 +6,7 @@ import mongoose from 'mongoose';
 import app from '../index.js';
 import Book from '../models/Book.js';
 import Cart from '../models/Cart.js';
+import User from '../models/User.js';
 import { generateAccessToken } from '../utils/jwt.js';
 
 const userId = new mongoose.Types.ObjectId();
@@ -12,7 +14,9 @@ const missingBook = new mongoose.Types.ObjectId();
 let server: Server | undefined;
 async function run() {
   assert.ok(process.env.MONGO_URI); assert.ok(process.env.JWT_SECRET);
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000, autoIndex: false });
+  await User.create({ _id: userId, name: 'Cart test', email: `cart-${userId}@example.invalid`, passwordHash: 'disabled-test-login' });
   const book = await Book.findOne({ isActive: true }).lean();
   assert.ok(book, 'Seeded book required');
   server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
@@ -49,7 +53,7 @@ run().catch(error => {
   process.exitCode = 1;
 }).finally(async () => {
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
-  try { if (mongoose.connection.readyState === 1) await Cart.deleteOne({ user: userId }); }
+  try { if (mongoose.connection.readyState === 1) { await Cart.deleteOne({ user: userId }); await User.deleteOne({ _id: userId }); } }
   finally { await mongoose.disconnect(); }
   console.log('Temporary cart removed; existing user carts and catalog unchanged.');
 });

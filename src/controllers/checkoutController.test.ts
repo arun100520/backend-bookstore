@@ -1,4 +1,6 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import { after, afterEach, before, beforeEach, test, type TestContext } from 'node:test';
@@ -67,6 +69,7 @@ function fixtures(t: TestContext) {
     await state.order.validate();
     return state.order;
   });
+  t.mock.method(Order, 'findOne', async () => null);
   const apiCreate = t.mock.method(Cashfree.prototype, 'PGCreateOrder', async (request: CreateOrderRequest) => {
     assert.ok(state.order, 'The local order must exist before the remote API call');
     state.request = request;
@@ -76,7 +79,7 @@ function fixtures(t: TestContext) {
 }
 
 async function post(body: unknown = { customerPhone: '9999999999' }, authorized = true) {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = { 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() };
   if (authorized) headers.Authorization = `Bearer ${generateAccessToken({ userId, role: 'user' })}`;
   const response = await fetch(`${baseUrl}/api/checkout/create-order`, {
     method: 'POST', headers, body: JSON.stringify(body),

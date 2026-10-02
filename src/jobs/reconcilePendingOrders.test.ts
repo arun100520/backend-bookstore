@@ -77,11 +77,11 @@ test('validates interval settings and supports explicitly disabling the schedule
   }
   assert.throws(() => reconciliationConfig({ RECONCILIATION_ENABLED: 'yes' }));
 });
-test('selects only old created orders and continues after individual provider errors', async t => {
+test('selects old unresolved orders including failed attempts and continues after provider errors', async t => {
   const now = new Date('2026-09-28T12:00:00Z');
   t.mock.method(PaymentEvent, 'find', () => ({ cursor: async function* () {} }));
   t.mock.method(Order, 'find', (filter: unknown) => {
-    assert.deepEqual(filter, { status: 'created', createdAt: { $lte: new Date('2026-09-28T11:45:00Z') },
+    assert.deepEqual(filter, { status: { $in: ['created', 'failed'] }, providerClosed: { $ne: true }, createdAt: { $lte: new Date('2026-09-28T11:45:00Z') },
       cashfreeOrderId: { $type: 'string', $ne: '' } });
     return { sort: () => ({ cursor: async function* () {
       yield { ...order, _id: new Types.ObjectId() };

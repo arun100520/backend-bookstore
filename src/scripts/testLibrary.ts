@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
@@ -5,6 +6,8 @@ import mongoose from 'mongoose';
 import app from '../index.js';
 import Book from '../models/Book.js';
 import Entitlement from '../models/Entitlement.js';
+import User from '../models/User.js';
+import Order from '../models/Order.js';
 import { cloudinary, configureCloudinary } from '../config/cloudinary.js';
 import { uploadPdf, pdfPublicIdFromUrl, generateSignedPdfUrl } from '../services/cloudinaryService.js';
 import { generateAccessToken } from '../utils/jwt.js';
@@ -12,14 +15,19 @@ import { generateAccessToken } from '../utils/jwt.js';
 const bookId = new mongoose.Types.ObjectId();
 const owner = new mongoose.Types.ObjectId();
 const other = new mongoose.Types.ObjectId();
+const orderId = new mongoose.Types.ObjectId();
 let publicId: string | undefined;
 let server: Server | undefined;
 async function run() {
   assert.ok(process.env.MONGO_URI); assert.ok(process.env.JWT_SECRET);
   assert.ok(process.env.CLOUDINARY_API_SECRET);
   configureCloudinary();
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
   await Entitlement.init();
+  for (const _id of [owner, other]) await User.create({ _id, name: 'Library test', email: `library-${_id}@example.invalid`, passwordHash: 'disabled-test-login' });
+  await Order.create({ _id: orderId, user: owner, orderNumber: `library-test-${orderId}`, status: 'paid', amountInPaise: 100,
+    currency: 'INR', items: [{ book: bookId, quantity: 1, priceAtPurchase: 100 }] });
   // A minimal PDF, stored as raw bytes. No existing book or asset is touched.
   const pdf = Buffer.from('%PDF-1.1\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [] /Count 0 >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%EOF\n');
   publicId = `ebook-store/pdfs/library-test-${bookId}`;
@@ -31,7 +39,7 @@ async function run() {
   await Book.create({ _id: bookId, title: 'Temporary library verification', slug: `library-test-${bookId}`,
     authors: ['Test'], description: 'Temporary fixture', priceInPaise: 100, pdfUrl: uploaded.url,
     language: new mongoose.Types.ObjectId(), isActive: false });
-  await Entitlement.create({ user: owner, book: bookId, order: new mongoose.Types.ObjectId() });
+  await Entitlement.create({ user: owner, book: bookId, order: orderId });
   server = app.listen(0, '127.0.0.1'); await once(server, 'listening');
   const address = server.address(); assert.ok(address && typeof address !== 'string');
   const base = `http://127.0.0.1:${address.port}/api/library`;
@@ -71,6 +79,7 @@ run().catch(error => {
     if (mongoose.connection.readyState === 1) {
       await Entitlement.deleteMany({ user: owner, book: bookId });
       await Book.deleteOne({ _id: bookId });
+      await Order.deleteOne({ _id: orderId }); await User.deleteMany({ _id: { $in: [owner, other] } });
     }
     if (publicId) {
       const result = await cloudinary.uploader.destroy(publicId, { resource_type: 'raw', type: 'private' });

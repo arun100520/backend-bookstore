@@ -10,6 +10,8 @@ export interface IPaymentEvent extends Document {
   source?: 'webhook' | 'reconciliation';
   processedAt?: Date;
   receivedAt: Date;
+  refundId?: string;
+  refundAmountInPaise?: number;
 }
 
 const paymentEventSchema = new Schema<IPaymentEvent>(
@@ -23,6 +25,8 @@ const paymentEventSchema = new Schema<IPaymentEvent>(
     source: { type: String, enum: ['webhook', 'reconciliation'], default: 'webhook' },
     processedAt: { type: Date },
     receivedAt: { type: Date, default: Date.now },
+    refundId: { type: String },
+    refundAmountInPaise: { type: Number, min: 0 },
   },
   { timestamps: false } // Only receivedAt is needed, but we can enable timestamps if we want
 );

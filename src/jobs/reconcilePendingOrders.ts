@@ -75,7 +75,11 @@ export async function reconcileOrder(order: Pick<IOrder, '_id' | 'cashfreeOrderI
   }
   const event = await PaymentEvent.findOne({ ...filter, order: order._id, source: 'reconciliation' });
   if (!event) throw new Error('Reconciliation event was not persisted');
-  return completeEvent(event);
+  const status = await completeEvent(event);
+  if (['EXPIRED', 'TERMINATED'].includes(snapshot.order_status)) {
+    await Order.updateOne({ _id: order._id }, { $set: { providerClosed: true } });
+  }
+  return status;
 }
 
 export function reconciliationConfig(env = process.env) {
@@ -124,7 +128,7 @@ export async function reconcilePendingOrders(options: { now?: Date; minAgeMs?: n
     try { await completeEvent(event); result.repaired++; }
     catch (error) { failed(event.order, error); }
   }
-  const pending = Order.find({ status: 'created', createdAt: { $lte: new Date(now.getTime() - minAgeMs) },
+  const pending = Order.find({ status: { $in: ['created', 'failed'] }, providerClosed: { $ne: true }, createdAt: { $lte: new Date(now.getTime() - minAgeMs) },
     cashfreeOrderId: { $type: 'string', $ne: '' }, ...(options.orderId ? { _id: options.orderId } : {}) })
     .sort({ createdAt: 1 }).cursor();
   for await (const order of pending) {

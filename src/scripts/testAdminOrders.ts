@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
@@ -5,6 +6,7 @@ import mongoose from 'mongoose';
 import { Cashfree } from 'cashfree-pg';
 import app from '../index.js';
 import Order from '../models/Order.js';
+import User from '../models/User.js';
 import PaymentEvent from '../models/PaymentEvent.js';
 import Entitlement from '../models/Entitlement.js';
 import { generateAccessToken } from '../utils/jwt.js';
@@ -17,8 +19,10 @@ const originalFetch = Cashfree.prototype.PGFetchOrder;
 let server: Server | undefined;
 async function run() {
   assert.ok(process.env.MONGO_URI); assert.equal(process.env.CASHFREE_ENV, 'sandbox');
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
   await Promise.all([PaymentEvent.init(), Entitlement.init()]);
+  for (const _id of [owner, admin]) await User.create({ _id, name: 'Admin test', email: `admin-test-${_id}@example.invalid`, passwordHash: 'disabled-test-login', role: _id.equals(admin) ? 'admin' : 'user' });
   await Order.create({ _id: id, user: owner, orderNumber: ref, cashfreeOrderId: ref, status: 'failed',
     amountInPaise: 100, currency: 'INR', items: [{ book: new mongoose.Types.ObjectId(), quantity: 1, priceAtPurchase: 100 }] });
   await PaymentEvent.create({ order: id, cashfreeOrderId: ref, cashfreeEventId: `failed_${id}`, eventType: 'PAYMENT_FAILED',
@@ -33,7 +37,7 @@ async function run() {
   const base = `http://127.0.0.1:${address.port}/api/admin/orders`;
   async function request(path: string, role: 'admin' | 'user' = 'admin') {
     const r = await fetch(base + path, { method: path.endsWith('/resync') ? 'POST' : 'GET', headers: {
-      Authorization: `Bearer ${generateAccessToken({ userId: String(admin), role })}`,
+      Authorization: `Bearer ${generateAccessToken({ userId: String(role === 'admin' ? admin : owner), role })}`,
     } });
     return { status: r.status, body: await r.json() as any };
   }
@@ -66,6 +70,7 @@ run().catch(error => {
   try {
     if (mongoose.connection.readyState === 1) {
       await Entitlement.deleteMany({ order: id }); await PaymentEvent.deleteMany({ order: id }); await Order.deleteOne({ _id: id });
+      await User.deleteMany({ _id: { $in: [owner, admin] } });
     }
     console.log('Temporary admin test records removed; no provider calls or existing orders changed.');
   } finally { await mongoose.disconnect(); }

@@ -1,14 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcrypt';
+import { randomBytes } from 'node:crypto';
+import { registration, registrationMessage } from '../services/registration.js';
+import { sessions } from '../services/sessions.js';
 import User from '../models/User.js';
 import { AppError } from '../middleware/errorHandler.js';
 import {
   generateAccessToken,
   generateRefreshToken,
+  verifyRefreshToken,
 } from '../utils/jwt.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BCRYPT_ROUNDS = 12;
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync(randomBytes(32).toString('hex'), BCRYPT_ROUNDS);
 const REFRESH_COOKIE = 'refreshToken';
 const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 
@@ -17,7 +22,7 @@ function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict',
     maxAge: COOKIE_MAX_AGE_MS,
   });
 }
@@ -54,14 +59,9 @@ export async function signup(
     }
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await User.create({ name, email, passwordHash });
-
-    const payload = { userId: String(user._id), role: user.role };
-    const accessToken = generateAccessToken(payload);
-    const refreshToken = generateRefreshToken(payload);
-    setRefreshCookie(res, refreshToken);
-
-    res.status(201).json({ accessToken, user: safeUser(user) });
+    await registration.start({ name, email, passwordHash });
+    res.set('Cache-Control', 'no-store');
+    res.status(202).json({ message: registrationMessage });
   } catch (err) {
     next(err);
   }
@@ -84,20 +84,17 @@ export async function login(
     }
 
     const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
+    const match = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !match) {
       throw new AppError(401, 'Invalid email or password');
     }
 
-    const match = await bcrypt.compare(password, user.passwordHash);
-    if (!match) {
-      throw new AppError(401, 'Invalid email or password');
-    }
-
-    const payload = { userId: String(user._id), role: user.role };
+    const payload = { userId: String(user._id), role: user.role, tokenVersion: user.tokenVersion ?? 0 };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     setRefreshCookie(res, refreshToken);
 
+    res.set('Cache-Control', 'no-store');
     res.status(200).json({ accessToken, user: safeUser(user) });
   } catch (err) {
     next(err);
@@ -105,9 +102,21 @@ export async function login(
 }
 
 // ── POST /api/auth/logout ─────────────────────────────────────────────────────
-export function logout(_req: Request, res: Response): void {
-  res.clearCookie(REFRESH_COOKIE, { httpOnly: true, sameSite: 'lax' });
-  res.status(200).json({ message: 'Logged out successfully' });
+export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await sessions.revokeAll(req.user!.userId);
+    res.clearCookie(REFRESH_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+    res.set('Cache-Control', 'no-store');
+    res.status(200).json({ message: 'Logged out on all devices' });
+  } catch (error) { next(error); }
+}
+
+export async function verifyEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await registration.complete(req.body.token);
+    res.set('Cache-Control', 'no-store');
+    res.json({ message: 'Email confirmed. You can now sign in with your password.' });
+  } catch (error) { next(error); }
 }
 
 // ── GET /api/auth/me ──────────────────────────────────────────────────────────
@@ -118,11 +127,41 @@ export async function me(
   next: NextFunction,
 ): Promise<void> {
   try {
+    res.set('Cache-Control', 'no-store');
     const user = await User.findById(req.user!.userId).select('-passwordHash');
     if (!user) {
       throw new AppError(401, 'User no longer exists');
     }
     res.status(200).json({ user: safeUser(user) });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ── POST /api/auth/refresh ────────────────────────────────────────────────────
+// Reads the httpOnly refresh cookie and issues a new short-lived access token.
+export async function refreshToken(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.set('Cache-Control', 'no-store');
+    const token = req.cookies[REFRESH_COOKIE];
+    if (!token) throw new AppError(401, 'Refresh token required');
+
+    let payload;
+    try { payload = verifyRefreshToken(token); }
+    catch { throw new AppError(401, 'Invalid or expired refresh token'); }
+
+    // Reject revoked sessions — tokenVersion is incremented on logout.
+    const user = await sessions.currentUser(payload.userId);
+    if (!user || payload.tokenVersion !== (user.tokenVersion ?? 0)) {
+      throw new AppError(401, 'Session has been revoked');
+    }
+
+    const accessToken = generateAccessToken({ userId: payload.userId, role: user.role, tokenVersion: user.tokenVersion ?? 0 });
+    res.status(200).json({ accessToken });
   } catch (err) {
     next(err);
   }

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { publicLimit } from '../middleware/rateLimit.js';
 import { getHome } from '../controllers/homeController.js';
 import {
   getBooks,
@@ -12,12 +13,12 @@ import {
 const router = Router();
 
 // Public routes
-router.get('/home', getHome);
-router.get('/books', getBooks);
-router.get('/books/:slug', getBookBySlug);
-router.get('/categories', getCategories);
-router.get('/genres', getGenres);
-router.get('/languages', getLanguages);
-router.get('/search', searchBooks);
+router.get('/home', publicLimit, getHome);
+router.get('/books', publicLimit, getBooks);
+router.get('/books/:slug', publicLimit, getBookBySlug);
+router.get('/categories', publicLimit, getCategories);
+router.get('/genres', publicLimit, getGenres);
+router.get('/languages', publicLimit, getLanguages);
+router.get('/search', publicLimit, searchBooks);
 
 export default router;

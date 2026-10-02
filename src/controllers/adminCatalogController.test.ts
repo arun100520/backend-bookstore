@@ -1,4 +1,7 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
+import { PDFDocument } from 'pdf-lib';
+import sharp from 'sharp';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import { before, after, test } from 'node:test';
@@ -73,10 +76,10 @@ test('admin can create a draft, upload multipart assets, publish and read the pu
     Object.assign(stored, data.$set); return stored;
   });
   t.mock.method(uploads, 'uploadCoverImage', async (buffer: Buffer) => {
-    assert.equal(buffer.toString(), 'image-fixture'); return { url: 'https://example.com/cover.png' };
+    assert.equal((await sharp(buffer).metadata()).format, 'webp'); return { url: 'https://example.com/cover.png' };
   });
   t.mock.method(uploads, 'uploadPdf', async (buffer: Buffer) => {
-    assert.equal(buffer.toString(), '%PDF-fixture'); return { url: 'private-pdf-reference' };
+    assert.equal((await PDFDocument.load(buffer)).getPageCount(), 1); return { url: 'private-pdf-reference' };
   });
   t.mock.method(Book, 'findOne', (filter: any) => {
     assert.equal(filter.isActive, true);
@@ -93,8 +96,10 @@ test('admin can create a draft, upload multipart assets, publish and read the pu
   const publicUrl = base.replace('/admin/books', '/books/http-published');
   assert.equal((await fetch(publicUrl)).status, 404);
   const files = new FormData();
-  files.append('cover', new Blob(['image-fixture'], { type: 'image/png' }), 'cover.png');
-  files.append('pdf', new Blob(['%PDF-fixture'], { type: 'application/pdf' }), 'book.pdf');
+  const image = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const pdf = await PDFDocument.create(); pdf.addPage();
+  files.append('cover', new Blob([new Uint8Array(image)], { type: 'image/png' }), 'cover.png');
+  files.append('pdf', new Blob([new Uint8Array(await pdf.save())], { type: 'application/pdf' }), 'book.pdf');
   response = await fetch(`${base}/${id}/upload`, { method: 'POST', headers, body: files });
   assert.equal(response.status, 200);
   assert.equal(stored.pdfUrl, 'private-pdf-reference');

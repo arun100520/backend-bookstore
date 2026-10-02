@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
@@ -9,6 +10,7 @@ import Order from '../models/Order.js';
 let server: Server | undefined;
 async function run() {
   assert.ok(process.env.MONGO_URI);
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000, autoIndex: false });
   server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');

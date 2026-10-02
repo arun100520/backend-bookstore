@@ -10,6 +10,7 @@ import Category from '../models/Category.js';
 import Genre from '../models/Genre.js';
 import Language from '../models/Language.js';
 import { connectDB } from '../config/db.js';
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 
 const SAMPLE_COVERS = [
   'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=800',
@@ -20,6 +21,7 @@ const SAMPLE_COVERS = [
 
 async function seed() {
   try {
+    requireDisposableDatabase();
     console.log('🌱 Starting database seed...');
     await connectDB();
 

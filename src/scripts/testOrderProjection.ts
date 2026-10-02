@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -15,7 +16,8 @@ async function run() {
   const otherOrderId = new mongoose.Types.ObjectId();
   const cashfreeOrderId = `projection_test_${randomUUID()}`;
   try {
-    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
+    requireDisposableDatabase();
+  await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
     await Promise.all([Order.init(), PaymentEvent.init()]);
     await Order.create({
       _id: orderId, user: new mongoose.Types.ObjectId(), orderNumber: cashfreeOrderId,

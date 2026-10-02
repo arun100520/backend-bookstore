@@ -1,9 +1,11 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
 import mongoose from 'mongoose';
 import app from '../index.js';
 import Order from '../models/Order.js';
+import User from '../models/User.js';
 import { generateAccessToken } from '../utils/jwt.js';
 
 const owner = new mongoose.Types.ObjectId();
@@ -13,8 +15,10 @@ const ids = [new mongoose.Types.ObjectId(), new mongoose.Types.ObjectId(), new m
 let server: Server | undefined;
 async function run() {
   assert.ok(process.env.MONGO_URI); assert.ok(process.env.JWT_SECRET);
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
   await Order.init();
+  for (const _id of [owner, other, empty]) await User.create({ _id, name: 'Order test', email: `orders-${_id}@example.invalid`, passwordHash: 'disabled-test-login' });
   for (const [i, id] of ids.entries()) {
     await Order.create({ _id: id, user: i === 2 ? other : owner, orderNumber: `order_history_test_${id}`,
       cashfreeOrderId: `private_reference_${id}`, status: 'created', amountInPaise: 300, currency: 'INR',
@@ -44,7 +48,9 @@ async function run() {
   assert.equal(denied.status, 404);
   assert.deepEqual(denied, await get(`/${new mongoose.Types.ObjectId()}`));
   assert.equal((await get(`/${ids[0]}`, other)).status, 404);
+  await User.updateOne({ _id: owner }, { $set: { role: 'admin' } });
   assert.equal((await get(`/${ids[2]}`, owner, 'admin')).status, 404);
+  await User.updateOne({ _id: owner }, { $set: { role: 'user' } });
   assert.equal((await get(`/${ids[0]}/status`)).body.data.status, 'created');
   console.log('PASS: real HTTP/MongoDB ownership, admin isolation, pagination, empty history, price snapshots, safe fields and status route.');
 }
@@ -54,7 +60,7 @@ run().catch(error => {
 }).finally(async () => {
   if (server) { server.closeAllConnections(); await new Promise<void>(resolve => server!.close(() => resolve())); }
   try {
-    if (mongoose.connection.readyState === 1) await Order.deleteMany({ _id: { $in: ids } });
+    if (mongoose.connection.readyState === 1) { await Order.deleteMany({ _id: { $in: ids } }); await User.deleteMany({ _id: { $in: [owner, other, empty] } }); }
   } finally { await mongoose.disconnect(); }
   console.log('Temporary order fixtures removed; existing orders unchanged.');
 });

@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { z } from 'zod';
+import { normalizeCover, validatePdf } from '../services/uploadValidation.js';
 
 export const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'Use a valid 24-character ID').toLowerCase();
 export const emptyBody = z.strictObject({}).optional();
@@ -52,10 +53,19 @@ const file = (mime: (value: string) => boolean, max: number, message: string) =>
     && value.buffer.length > 0 && value.buffer.length <= max, message,
 );
 const uploads = z.strictObject({
-  cover: z.array(file(type => type.startsWith('image/'), 5 * 1024 * 1024, 'Choose a non-empty image up to 5 MB')).length(1).optional(),
+  cover: z.array(file(type => ['image/jpeg', 'image/png', 'image/webp'].includes(type), 5 * 1024 * 1024, 'Choose a non-empty JPEG, PNG or WebP up to 5 MB')).length(1).optional(),
   pdf: z.array(file(type => type === 'application/pdf', 50 * 1024 * 1024, 'Choose a non-empty PDF up to 50 MB')).length(1).optional(),
 }).refine(value => !!value.cover || !!value.pdf, 'Provide a cover or PDF file');
-export const validateUploads: RequestHandler = (req, _res, next) => {
+export const validateUploads: RequestHandler = async (req, _res, next) => {
   const result = uploads.safeParse(req.files);
-  next(result.success ? undefined : result.error);
+  if (!result.success) return next(result.error);
+  try {
+    if (result.data.pdf) await validatePdf(result.data.pdf[0].buffer);
+    if (result.data.cover) {
+      const cover = result.data.cover[0];
+      cover.buffer = await normalizeCover(cover.buffer);
+      cover.mimetype = 'image/webp'; cover.size = cover.buffer.length;
+    }
+    next();
+  } catch (error) { next(error); }
 };

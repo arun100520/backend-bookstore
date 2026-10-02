@@ -21,10 +21,18 @@ import webhookRoutes from './routes/webhookRoutes.js';
 import PaymentEvent from './models/PaymentEvent.js';
 import Entitlement from './models/Entitlement.js';
 import { reconciliationConfig, startReconciliationJob } from './jobs/reconcilePendingOrders.js';
+import { securityHeaders, trustedProxies, validateProductionConfig } from './config/security.js';
+import RateLimit from './models/RateLimit.js';
+import Registration from './models/Registration.js';
+import User from './models/User.js';
+import Order from './models/Order.js';
 
 dotenv.config();
 
 const app = express();
+app.disable('x-powered-by');
+app.set('trust proxy', trustedProxies());
+app.use(securityHeaders);
 const PORT = process.env.PORT || 5000;
 
 // ── Global middleware ─────────────────────────────────────────────────────────
@@ -62,9 +70,10 @@ app.use(errorHandler);
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function start() {
+  validateProductionConfig();
   reconciliationConfig();
   await connectDB(); // exits process on failure
-  await Promise.all([PaymentEvent.init(), Entitlement.init()]);
+  await Promise.all([PaymentEvent.init(), Entitlement.init(), RateLimit.init(), Registration.init(), User.init(), Order.init()]);
   configureCloudinary(); // warns if vars missing but doesn't block
   app.listen(PORT, () => {
     console.log(`[server] Running on http://localhost:${PORT}`);

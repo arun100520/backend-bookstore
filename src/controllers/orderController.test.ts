@@ -1,3 +1,4 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';

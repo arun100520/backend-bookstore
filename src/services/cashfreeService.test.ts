@@ -48,6 +48,15 @@ test('fetch uses the merchant order ID and the selected environment', async (t) 
   assert.equal((await getOrderStatus('test_order')).order_status, 'ACTIVE');
 });
 
+test('checkout retries supply a stable UUID provider idempotency key', async t => {
+  const id = 'b83229e1-8e63-4c40-b8bb-fbf7248d54aa';
+  t.mock.method(Cashfree.prototype, 'PGCreateOrder', async (...args: unknown[]) => {
+    assert.equal(args[2], id);
+    return { data: { order_id: `ebook_${id}` } };
+  });
+  await createOrder({ ...params, order_id: `ebook_${id}` });
+});
+
 test('missing credentials and invalid environments fail before any API call', async () => {
   delete process.env.CASHFREE_APP_ID;
   await assert.rejects(createOrder(params), /CASHFREE_APP_ID/);

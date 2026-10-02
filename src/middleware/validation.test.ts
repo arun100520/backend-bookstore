@@ -1,3 +1,4 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { once } from 'node:events';
@@ -5,6 +6,7 @@ import type { Server } from 'node:http';
 import { before, after, test } from 'node:test';
 import app from '../index.js';
 import User from '../models/User.js';
+import { registration } from '../services/registration.js';
 import Book from '../models/Book.js';
 import { generateAccessToken } from '../utils/jwt.js';
 
@@ -123,12 +125,11 @@ test('upload validation rejects wrong types, oversized covers, empty files and b
 
 test('normalizes valid signup input and keeps passwords unchanged', async t => {
   let saved: any;
-  t.mock.method(User, 'create', async (data: any) => {
+  t.mock.method(registration, 'start', async (data: any) => {
     saved = data;
-    throw Object.assign(new Error('Duplicate'), { name: 'MongoServerError', code: 11000, keyValue: { email: data.email } });
   });
   const { response, body } = await send('POST', '/auth/signup', JSON.stringify({ name: ' Reader ', email: ' READER@EXAMPLE.COM ', password: 'good password' }));
-  assert.equal(response.status, 409); assert.equal(body.status, 409);
+  assert.equal(response.status, 202); assert.equal(body.accessToken, undefined);
   assert.equal(saved.name, 'Reader'); assert.equal(saved.email, 'reader@example.com');
   assert.ok(saved.passwordHash); assert.equal(body.passwordHash, undefined);
 });

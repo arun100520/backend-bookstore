@@ -15,6 +15,9 @@ export interface IOrder extends Document {
   currency: string;
   status: 'created' | 'paid' | 'failed' | 'refunded';
   cashfreeOrderId?: string;
+  checkoutKey?: string;
+  checkoutPhoneHash?: string;
+  providerClosed?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -39,11 +42,16 @@ const orderSchema = new Schema<IOrder>(
       default: 'created',
     },
     cashfreeOrderId: { type: String }, // Merchant order_id, saved before calling Cashfree
+    checkoutKey: { type: String },
+    checkoutPhoneHash: { type: String },
+    providerClosed: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
 
 orderSchema.index({ status: 1, createdAt: 1 });
 orderSchema.index({ user: 1, createdAt: -1, _id: -1 });
+orderSchema.index({ user: 1, status: 1, 'items.book': 1 });
+orderSchema.index({ user: 1, checkoutKey: 1 }, { unique: true, partialFilterExpression: { checkoutKey: { $type: 'string' } } });
 const Order = mongoose.model<IOrder>('Order', orderSchema);
 export default Order;

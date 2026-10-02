@@ -1,3 +1,4 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import type { Server } from 'node:http';
@@ -6,6 +7,13 @@ import { Types } from 'mongoose';
 import app from '../index.js';
 import Entitlement from '../models/Entitlement.js';
 import Book from '../models/Book.js';
+import Order from '../models/Order.js';
+import { beforeEach, type TestContext } from 'node:test';
+beforeEach(context => {
+  const t = context as TestContext;
+  t.mock.method(Order, 'exists', async () => ({ _id: 'paid-order' }));
+  t.mock.method(Order, 'distinct', async () => [bookId]);
+});
 import { cloudinary } from '../config/cloudinary.js';
 import { generateAccessToken } from '../utils/jwt.js';
 import { generateSignedPdfUrl, pdfPublicIdFromUrl } from '../services/cloudinaryService.js';
@@ -78,7 +86,7 @@ test('missing PDF returns 404; untrusted PDF storage URL returns safe 503', asyn
 });
 test('library scopes entitlements, uses safe book fields, and omits deleted books', async t => {
   t.mock.method(Entitlement, 'find', (filter: unknown) => {
-    assert.deepEqual(filter, { user: userId });
+    assert.deepEqual(filter, { user: userId, book: { $in: [bookId] } });
     return { select: () => ({ sort: () => ({ populate: (path: string, fields: string) => {
       assert.equal(path, 'book'); assert.equal(fields, '_id title slug authors coverUrl description');
       return { lean: async () => [{ _id: 'kept', book: { _id: bookId, title: 'Book' } }, { _id: 'deleted', book: null }] };

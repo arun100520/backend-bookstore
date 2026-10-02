@@ -4,11 +4,25 @@ import Category from '../models/Category.js';
 import Genre from '../models/Genre.js';
 import Language from '../models/Language.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { z } from 'zod';
+import { objectId } from '../middleware/validate.js';
+
+const positiveInteger = (fallback: string, max: number) => z.string().regex(/^[1-9]\d*$/).default(fallback)
+  .transform(Number).pipe(z.number().int().max(max));
+const price = z.string().regex(/^\d+$/).transform(Number).pipe(z.number().int().nonnegative().safe()).optional();
+const searchText = z.string().trim().max(200).optional();
+const catalogQuery = z.strictObject({
+  category: objectId.optional(), genre: objectId.optional(), language: objectId.optional(),
+  minPrice: price, maxPrice: price, q: searchText,
+  page: positiveInteger('1', 1001), limit: positiveInteger('20', 100),
+}).refine(input => (input.page - 1) * input.limit <= 10_000, 'Maximum offset is 10000')
+  .refine(input => input.minPrice === undefined || input.maxPrice === undefined || input.minPrice <= input.maxPrice, 'Invalid price range');
+const searchQuery = z.strictObject({ q: searchText, limit: positiveInteger('10', 100) });
 
 // ── GET /api/books ────────────────────────────────────────────────────────────
 export async function getBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { category, genre, language, minPrice, maxPrice, q, page = '1', limit = '20' } = req.query;
+    const { category, genre, language, minPrice, maxPrice, q, page: pageNum, limit: limitNum } = catalogQuery.parse(req.query);
 
     const query: any = { isActive: true };
 
@@ -19,19 +33,17 @@ export async function getBooks(req: Request, res: Response, next: NextFunction):
     if (genre) query.genreIds = genre;
     if (language) query.language = language;
 
-    if (minPrice || maxPrice) {
+    if (minPrice !== undefined || maxPrice !== undefined) {
       query.priceInPaise = {};
-      if (minPrice) query.priceInPaise.$gte = Number(minPrice);
-      if (maxPrice) query.priceInPaise.$lte = Number(maxPrice);
+      if (minPrice !== undefined) query.priceInPaise.$gte = minPrice;
+      if (maxPrice !== undefined) query.priceInPaise.$lte = maxPrice;
     }
 
-    const pageNum = Math.max(1, parseInt(String(page), 10) || 1);
-    const limitNum = Math.max(1, parseInt(String(limit), 10) || 20);
     const skip = (pageNum - 1) * limitNum;
 
     // Use projection to omit pdfUrl so it doesn't leak unless purchased
     const [books, total] = await Promise.all([
-      Book.find(query)
+      Book.find(query).maxTimeMS(3000)
         .select('-pdfUrl')
         .populate('categoryIds', 'name slug')
         .populate('genreIds', 'name slug')
@@ -39,7 +51,7 @@ export async function getBooks(req: Request, res: Response, next: NextFunction):
         .skip(skip)
         .limit(limitNum)
         .sort(q ? { score: { $meta: 'textScore' }, _id: -1 } : { createdAt: -1, _id: -1 }),
-      Book.countDocuments(query),
+      Book.countDocuments(query).maxTimeMS(3000),
     ]);
 
     res.status(200).json({
@@ -108,16 +120,15 @@ export async function getLanguages(_req: Request, res: Response, next: NextFunct
 // ── GET /api/search?q= ────────────────────────────────────────────────────────
 export async function searchBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { q, limit = '10' } = req.query;
+    const { q, limit: limitNum } = searchQuery.parse(req.query);
 
     if (!q) {
       res.status(200).json({ data: [] });
       return;
     }
 
-    const limitNum = Math.max(1, parseInt(String(limit), 10) || 10);
-
     const books = await Book.find({ isActive: true, $text: { $search: String(q) } })
+      .maxTimeMS(3000)
       .select('title slug coverUrl authors priceInPaise')
       .limit(limitNum)
       .sort({ score: { $meta: 'textScore' } });

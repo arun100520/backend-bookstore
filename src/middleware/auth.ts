@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt.js';
 import { AppError } from './errorHandler.js';
+import { sessions } from '../services/sessions.js';
 
 /**
  * authenticate — verifies the Bearer token in the Authorization header,
@@ -10,11 +11,11 @@ import { AppError } from './errorHandler.js';
  *   - No Authorization header / not Bearer format
  *   - Token is missing, expired, or tampered with
  */
-export function authenticate(
+export async function authenticate(
   req: Request,
   _res: Response,
   next: NextFunction,
-): void {
+): Promise<void> {
   try {
     const authHeader = req.headers.authorization;
 
@@ -34,6 +35,11 @@ export function authenticate(
       throw new AppError(401, 'Invalid or expired access token');
     }
 
+    const user = await sessions.currentUser(req.user!.userId);
+    if (!user || req.user!.role !== user.role || req.user!.tokenVersion !== (user.tokenVersion ?? 0)) {
+      throw new AppError(401, 'Session is no longer valid');
+    }
+    req.user!.role = user.role;
     next();
   } catch (err) {
     next(err);

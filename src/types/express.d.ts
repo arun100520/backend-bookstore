@@ -5,6 +5,7 @@ declare global {
       user?: {
         userId: string;
         role: string;
+        tokenVersion?: number;
       };
     }
   }

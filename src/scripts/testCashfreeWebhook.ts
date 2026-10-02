@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { createHmac, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -29,7 +30,8 @@ async function run() {
   let server: Server | undefined;
   let passed = false;
   try {
-    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
+    requireDisposableDatabase();
+  await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
     await Promise.all([User.init(), Order.init(), PaymentEvent.init(), Entitlement.init()]);
     const books = await Book.find({ isActive: true, priceInPaise: { $gte: 100 } }).limit(2);
     assert.equal(books.length, 2, 'Seed at least two active books before running the test');

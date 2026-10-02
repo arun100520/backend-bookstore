@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import Cart from '../models/Cart.js';
@@ -14,6 +14,7 @@ const checkoutSchema = z.object({
 });
 
 export async function createCheckoutOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.set('Cache-Control', 'no-store');
   try {
     const input = checkoutSchema.safeParse(req.body);
     if (!input.success) {
@@ -24,45 +25,60 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
     if (!['http:', 'https:'].includes(clientUrl.protocol)) throw new AppError(500, 'Checkout return URL is not configured');
 
     const userId = req.user!.userId;
+    const checkoutKey = req.get('Idempotency-Key');
+    if (!checkoutKey || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(checkoutKey)) {
+      throw new AppError(400, 'A UUID v4 Idempotency-Key header is required');
+    }
+    const checkoutPhoneHash = createHash('sha256').update(input.data.customerPhone).digest('hex');
     const user = await User.findById(userId).select('name email');
     if (!user) throw new AppError(401, 'User no longer exists');
-    const cart = await Cart.findOne({ user: userId });
-    if (!cart || cart.items.length === 0) throw new AppError(400, 'Your cart is empty');
-
-    const books = await Book.find({ _id: { $in: cart.items.map((item) => item.book) } })
-      .select('priceInPaise isActive');
-    const byId = new Map(books.map((book) => [String(book._id), book]));
-    let amountInPaise = 0;
-    const items: IOrderItem[] = cart.items.map((item) => {
-      const book = byId.get(String(item.book));
-      if (!book || !book.isActive) {
-        throw new AppError(409, 'A book in your cart is no longer available. Update your cart before checkout.');
+    let order = await Order.findOne({ user: userId, checkoutKey });
+    if (!order) {
+      const cart = await Cart.findOne({ user: userId });
+      if (!cart || cart.items.length === 0) throw new AppError(400, 'Your cart is empty');
+  
+      const books = await Book.find({ _id: { $in: cart.items.map((item) => item.book) } })
+        .select('priceInPaise isActive');
+      const byId = new Map(books.map((book) => [String(book._id), book]));
+      let amountInPaise = 0;
+      const items: IOrderItem[] = cart.items.map((item) => {
+        const book = byId.get(String(item.book));
+        if (!book || !book.isActive) {
+          throw new AppError(409, 'A book in your cart is no longer available. Update your cart before checkout.');
+        }
+        if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) {
+          throw new AppError(400, 'Cart quantities must be positive whole numbers');
+        }
+        if (!Number.isSafeInteger(book.priceInPaise) || book.priceInPaise < 0) {
+          throw new AppError(409, 'A book in your cart has an invalid price');
+        }
+        amountInPaise += book.priceInPaise * item.quantity;
+        if (!Number.isSafeInteger(amountInPaise)) throw new AppError(400, 'Cart total is too large');
+        return { cartItemId: item._id, book: item.book, quantity: item.quantity, priceAtPurchase: book.priceInPaise };
+      });
+      if (amountInPaise < 100) throw new AppError(400, 'Cashfree checkout requires a total of at least INR 1');
+  
+      const orderNumber = `ebook_${randomUUID()}`;
+      // Persist the merchant order_id before the network request so ambiguous failures
+      // can be reconciled later. Cashfree's numeric cf_order_id is a different field.
+      try { order = await Order.create({
+        user: userId, orderNumber, items, amountInPaise,
+        currency: 'INR', status: 'created', cashfreeOrderId: orderNumber,
+        checkoutKey, checkoutPhoneHash,
+      }); } catch (error) {
+        if ((error as { code?: number }).code !== 11000) throw error;
+        order = await Order.findOne({ user: userId, checkoutKey });
+        if (!order) throw error;
       }
-      if (!Number.isSafeInteger(item.quantity) || item.quantity < 1) {
-        throw new AppError(400, 'Cart quantities must be positive whole numbers');
-      }
-      if (!Number.isSafeInteger(book.priceInPaise) || book.priceInPaise < 0) {
-        throw new AppError(409, 'A book in your cart has an invalid price');
-      }
-      amountInPaise += book.priceInPaise * item.quantity;
-      if (!Number.isSafeInteger(amountInPaise)) throw new AppError(400, 'Cart total is too large');
-      return { cartItemId: item._id, book: item.book, quantity: item.quantity, priceAtPurchase: book.priceInPaise };
-    });
-    if (amountInPaise < 100) throw new AppError(400, 'Cashfree checkout requires a total of at least INR 1');
-
-    const orderNumber = `ebook_${randomUUID()}`;
-    // Persist the merchant order_id before the network request so ambiguous failures
-    // can be reconciled later. Cashfree's numeric cf_order_id is a different field.
-    const order = await Order.create({
-      user: userId, orderNumber, items, amountInPaise,
-      currency: 'INR', status: 'created', cashfreeOrderId: orderNumber,
-    });
+    }
+    if (order.checkoutPhoneHash !== checkoutPhoneHash) throw new AppError(409, 'This checkout key was already used with different details');
+    if (order.status !== 'created') throw new AppError(409, 'This order is already resolved. Check your order history.');
 
     let payment;
     try {
       payment = await createOrder({
         order_id: order.cashfreeOrderId,
-        order_amount: amountInPaise / 100,
+        order_amount: order.amountInPaise / 100,
         order_currency: order.currency,
         order_meta: {
           return_url: new URL(`/checkout/return?orderId=${order._id}`, clientUrl).toString(),
@@ -87,12 +103,12 @@ export async function createCheckoutOrder(req: Request, res: Response, next: Nex
         response?: { status?: number; data?: { code?: string; message?: string } };
       };
       console.warn('[checkout] Cashfree order creation failed', {
-        orderNumber,
+        orderNumber: order.orderNumber,
         status: failure.response?.status,
         code: failure.response?.data?.code || failure.code,
         message: failure.response?.data?.message || failure.message,
       });
-      throw new AppError(502, `Could not initialize payment for order ${orderNumber}. Please try again later.`);
+      throw new AppError(502, `Could not initialize payment for order ${order.orderNumber}. Retry with the same checkout key.`);
     }
 
     res.status(201).json({ data: {

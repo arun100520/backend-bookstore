@@ -1,13 +1,18 @@
 import { validateBody, signupBody, loginBody, emptyBody } from '../middleware/validate.js';
 import { Router } from 'express';
-import { signup, login, logout, me } from '../controllers/authController.js';
+import { signup, login, logout, me, verifyEmail, refreshToken } from '../controllers/authController.js';
+import { z } from 'zod';
+import { loginLimits, signupLimits, rateLimit } from '../middleware/rateLimit.js';
 import { authenticate } from '../middleware/auth.js';
 
 const router = Router();
 
-router.post('/signup', validateBody(signupBody), signup);
-router.post('/login', validateBody(loginBody), login);
-router.post('/logout', validateBody(emptyBody), logout);
-router.get('/me', authenticate, me); // authenticate runs first, then me
+router.post('/signup', validateBody(signupBody), ...signupLimits, signup);
+router.post('/login', validateBody(loginBody), ...loginLimits, login);
+router.post('/refresh', rateLimit('refresh-ip', 30, 15 * 60_000), refreshToken);
+router.post('/verify-email', rateLimit('verify-ip', 30, 15 * 60_000), validateBody(z.strictObject({ token: z.string().regex(/^[a-f0-9]{64}$/) })), verifyEmail);
+router.post('/logout', validateBody(emptyBody), authenticate, rateLimit('logout-user', 30, 60_000, req => req.user!.userId), logout);
+router.get('/me', authenticate, rateLimit('session-user', 120, 60_000, req => req.user!.userId), me);
 
 export default router;
+

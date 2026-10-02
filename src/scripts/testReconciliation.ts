@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
@@ -16,6 +17,7 @@ const originalGrant = Entitlement.updateOne;
 async function run() {
   assert.equal(process.env.CASHFREE_ENV?.trim() || 'sandbox', 'sandbox');
   assert.ok(process.env.MONGO_URI);
+  requireDisposableDatabase();
   await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15000 });
   await Promise.all([Order.init(), PaymentEvent.init(), Entitlement.init()]);
   const now = new Date();

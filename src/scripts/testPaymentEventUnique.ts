@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { resolve } from 'path';
@@ -11,6 +12,7 @@ import PaymentEvent from '../models/PaymentEvent.js';
 async function runTest() {
   try {
     console.log('🌱 Connecting to DB for PaymentEvent unique index test...');
+    requireDisposableDatabase();
     await connectDB();
 
     // Ensure indexes are built

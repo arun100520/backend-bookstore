@@ -7,6 +7,7 @@ export interface IUser extends Document {
   email: string;
   passwordHash: string;
   role: UserRole;
+  tokenVersion: number;
   avatarUrl?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -39,9 +40,11 @@ const userSchema = new Schema<IUser>(
       default: 'user',
     },
     avatarUrl: {
+      // Optional public profile image.
       type: String,
       default: undefined,
     },
+    tokenVersion: { type: Number, default: 0, min: 0 },
   },
   {
     timestamps: true, // adds createdAt + updatedAt automatically

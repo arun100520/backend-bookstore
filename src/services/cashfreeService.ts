@@ -27,7 +27,8 @@ function getClient(): Cashfree {
 
 /** Amounts passed to Cashfree are in rupees, not the database's paise. */
 export async function createOrder(params: CreateOrderParams) {
-  const response = await getClient().PGCreateOrder(params, undefined, undefined, { timeout: 15_000 });
+  const providerKey = params.order_id?.startsWith('ebook_') ? params.order_id.slice(6) : undefined;
+  const response = await getClient().PGCreateOrder(params, undefined, providerKey, { timeout: 15_000 });
   return response.data;
 }
 

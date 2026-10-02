@@ -1,3 +1,4 @@
+import '../test/httpFixtures.js';
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { once } from 'node:events';

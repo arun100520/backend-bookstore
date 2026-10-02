@@ -104,6 +104,7 @@ export async function processCashfreeWebhook(rawPayload: unknown): Promise<void>
     await PaymentEvent.updateOne(filter, { $setOnInsert: {
       order: order._id, cashfreeOrderId, cashfreeEventId, eventType,
       rawPayload, signatureVerified: true,
+      ...(identity[0] === 'refund' ? { refundId: identity[2], refundAmountInPaise: amount } : {}),
     } }, { upsert: true, runValidators: true });
   } catch (error) {
     // Concurrent insert races are harmless only when the expected row exists.

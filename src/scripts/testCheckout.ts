@@ -1,3 +1,4 @@
+import { requireDisposableDatabase } from '../config/operationalSafety.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
@@ -25,7 +26,8 @@ async function run() {
   const userId = new mongoose.Types.ObjectId();
   let attemptedCheckout = false;
   try {
-    await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
+    requireDisposableDatabase();
+  await mongoose.connect(process.env.MONGO_URI, { serverSelectionTimeoutMS: 15_000 });
     const book = await Book.findOne({ isActive: true, priceInPaise: { $gte: 100 } });
     assert.ok(book, 'Seed at least one active book priced at INR 1 or more before running this test');
     await Promise.all([User.init(), Cart.init(), Order.init()]);
@@ -44,7 +46,7 @@ async function run() {
     console.log(`Sandbox test user ID: ${userId}`);
     const response = await fetch(`http://127.0.0.1:${address.port}/api/checkout/create-order`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: { 'Idempotency-Key': randomUUID(), 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ customerPhone: '9999999999' }),
     });
     const body = await response.json() as { message?: string; data?: {
