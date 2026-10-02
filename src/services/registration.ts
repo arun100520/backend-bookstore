@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { Resend } from 'resend';
 import Registration from '../models/Registration.js';
 import User from '../models/User.js';
+import VerificationReceipt from '../models/VerificationReceipt.js';
 import { AppError } from '../middleware/errorHandler.js';
 
 export const registrationMessage = 'Check your email to complete registration. If you already have an account, sign in.';
@@ -24,6 +25,13 @@ export const verificationMail = {
   },
 };
 export const registration = {
+  async status(token: string): Promise<'verified' | 'pending' | 'invalid'> {
+    const tokenHash = createHash('sha256').update(token).digest('hex');
+    if (await VerificationReceipt.exists({ tokenHash })) return 'verified';
+    if (await Registration.exists({ tokenHash, expiresAt: { $gt: new Date() } })) return 'pending';
+    // A concurrent confirmation may have removed the pending registration.
+    return await VerificationReceipt.exists({ tokenHash }) ? 'verified' : 'invalid';
+  },
   async start(input: { name: string; email: string; passwordHash: string }) {
     const token = randomBytes(32).toString('hex');
     const tokenHash = createHash('sha256').update(token).digest('hex');
@@ -38,12 +46,21 @@ export const registration = {
   },
   async complete(token: string) {
     const tokenHash = createHash('sha256').update(token).digest('hex');
+    if (await VerificationReceipt.exists({ tokenHash })) return;
     // An insert failure leaves the link retryable; unique email prevents races
     // from creating duplicate accounts or replacing an existing password.
     const pending = await Registration.findOne({ tokenHash, expiresAt: { $gt: new Date() } });
-    if (!pending) throw new AppError(400, 'This verification link is invalid or expired. Please register again.');
+    if (!pending) {
+      if (await VerificationReceipt.exists({ tokenHash })) return;
+      throw new AppError(400, 'This verification link is invalid or expired. Please register again.');
+    }
     try { await User.create({ name: pending.name, email: pending.email, passwordHash: pending.passwordHash }); }
     catch (error) { if ((error as { code?: number }).code !== 11000) throw error; }
+    // Persist success before removing the pending record. Retries never change
+    // an existing account's password or issue a session.
+    try {
+      await VerificationReceipt.updateOne({ tokenHash }, { $setOnInsert: { tokenHash, verifiedAt: new Date() } }, { upsert: true });
+    } catch (error) { if ((error as { code?: number }).code !== 11000) throw error; }
     await Registration.deleteOne({ tokenHash });
   },
 };

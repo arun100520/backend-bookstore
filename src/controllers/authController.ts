@@ -115,7 +115,14 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
   try {
     await registration.complete(req.body.token);
     res.set('Cache-Control', 'no-store');
-    res.json({ message: 'Email confirmed. You can now sign in with your password.' });
+    res.json({ status: 'verified', message: 'Email verified. You can now sign in with your password.' });
+  } catch (error) { next(error); }
+}
+
+export async function verificationStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    res.set('Cache-Control', 'no-store');
+    res.json({ status: await registration.status(req.body.token) });
   } catch (error) { next(error); }
 }
 

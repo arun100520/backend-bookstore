@@ -24,6 +24,7 @@ import { reconciliationConfig, startReconciliationJob } from './jobs/reconcilePe
 import { securityHeaders, trustedProxies, validateProductionConfig } from './config/security.js';
 import RateLimit from './models/RateLimit.js';
 import Registration from './models/Registration.js';
+import VerificationReceipt from './models/VerificationReceipt.js';
 import User from './models/User.js';
 import Order from './models/Order.js';
 
@@ -73,7 +74,7 @@ async function start() {
   validateProductionConfig();
   reconciliationConfig();
   await connectDB(); // exits process on failure
-  await Promise.all([PaymentEvent.init(), Entitlement.init(), RateLimit.init(), Registration.init(), User.init(), Order.init()]);
+  await Promise.all([PaymentEvent.init(), Entitlement.init(), RateLimit.init(), Registration.init(), VerificationReceipt.init(), User.init(), Order.init()]);
   configureCloudinary(); // warns if vars missing but doesn't block
   app.listen(PORT, () => {
     console.log(`[server] Running on http://localhost:${PORT}`);
