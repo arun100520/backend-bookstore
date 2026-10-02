@@ -5,6 +5,7 @@ import { registration, registrationMessage } from '../services/registration.js';
 import { sessions } from '../services/sessions.js';
 import User from '../models/User.js';
 import { AppError } from '../middleware/errorHandler.js';
+import { refreshCookieOptions } from '../config/authCookies.js';
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -20,9 +21,7 @@ const COOKIE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function setRefreshCookie(res: Response, token: string): void {
   res.cookie(REFRESH_COOKIE, token, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
+    ...refreshCookieOptions(),
     maxAge: COOKIE_MAX_AGE_MS,
   });
 }
@@ -105,7 +104,7 @@ export async function login(
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await sessions.revokeAll(req.user!.userId);
-    res.clearCookie(REFRESH_COOKIE, { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'strict' });
+    res.clearCookie(REFRESH_COOKIE, refreshCookieOptions());
     res.set('Cache-Control', 'no-store');
     res.status(200).json({ message: 'Logged out on all devices' });
   } catch (error) { next(error); }

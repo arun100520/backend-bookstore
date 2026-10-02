@@ -1,4 +1,5 @@
 import express from 'express';
+import { clientOrigin } from './config/authCookies.js';
 import dotenv from 'dotenv';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
@@ -39,7 +40,7 @@ const PORT = process.env.PORT || 5000;
 // ── Global middleware ─────────────────────────────────────────────────────────
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    origin: clientOrigin(),
     credentials: true, // allow cookies to be sent cross-origin
   }),
 );
