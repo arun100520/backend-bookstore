@@ -26,7 +26,11 @@ export function validateProductionConfig(env = process.env): void {
   }
   const client = new URL(env.CLIENT_URL || '');
   if (client.protocol !== 'https:' || client.username || client.password || client.pathname !== '/' || client.search || client.hash) throw new Error('CLIENT_URL must be an HTTPS origin');
-  if (env.CASHFREE_ENV !== 'production') throw new Error('Production requires CASHFREE_ENV=production');
+  // Hosting mode controls runtime security; payment mode selects Cashfree's
+  // credentials/API independently, including sandbox testing on a deployed app.
+  if (!['sandbox', 'production'].includes(env.CASHFREE_ENV?.trim() || '')) {
+    throw new Error('Set CASHFREE_ENV explicitly to sandbox or production');
+  }
   const lifetime = env.JWT_ACCESS_EXPIRES_IN || '15m';
   if (!/^(?:[1-9]|[1-5]\d|60)s$|^(?:[1-9]|1[0-5])m$/.test(lifetime)) throw new Error('Access token lifetime must be at most 15 minutes (s or m units)');
 }
