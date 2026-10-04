@@ -8,12 +8,14 @@ import {
   getGenres,
   getLanguages,
   searchBooks,
+  getSitemapBooks,
 } from '../controllers/catalogController.js';
 
 const router = Router();
 
 // Public routes
 router.get('/home', publicLimit, getHome);
+router.get('/sitemap/books', publicLimit, getSitemapBooks);
 router.get('/books', publicLimit, getBooks);
 router.get('/books/:slug', publicLimit, getBookBySlug);
 router.get('/categories', publicLimit, getCategories);

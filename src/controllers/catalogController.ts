@@ -19,6 +19,21 @@ const catalogQuery = z.strictObject({
   .refine(input => input.minPrice === undefined || input.maxPrice === undefined || input.minPrice <= input.maxPrice, 'Invalid price range');
 const searchQuery = z.strictObject({ q: searchText, limit: positiveInteger('10', 100) });
 
+// Cursor pagination avoids the public catalog's 10,000-result offset cap.
+// Only public URL metadata is returned, never download locations.
+export async function getSitemapBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { after } = z.strictObject({ after: objectId.optional() }).parse(req.query);
+    const books = await Book.find({ isActive: true, ...(after ? { _id: { $gt: after } } : {}) })
+      .select('_id slug updatedAt').sort({ _id: 1 }).limit(1001).maxTimeMS(5000).lean();
+    const data = books.slice(0, 1000);
+    res.json({
+      data: data.map(book => ({ slug: book.slug, updatedAt: book.updatedAt })),
+      meta: { nextCursor: books.length > 1000 ? String(data[data.length - 1]._id) : null },
+    });
+  } catch (error) { next(error); }
+}
+
 // ── GET /api/books ────────────────────────────────────────────────────────────
 export async function getBooks(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
