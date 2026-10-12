@@ -54,7 +54,7 @@ const file = (mime: (value: string) => boolean, max: number, message: string) =>
 );
 const uploads = z.strictObject({
   cover: z.array(file(type => ['image/jpeg', 'image/png', 'image/webp'].includes(type), 5 * 1024 * 1024, 'Choose a non-empty JPEG, PNG or WebP up to 5 MB')).length(1).optional(),
-  pdf: z.array(file(type => type === 'application/pdf', 50 * 1024 * 1024, 'Choose a non-empty PDF up to 50 MB')).length(1).optional(),
+  pdf: z.array(file(type => type === 'application/pdf', 100 * 1024 * 1024, 'Choose a non-empty PDF up to 100 MB')).length(1).optional(),
 }).refine(value => !!value.cover || !!value.pdf, 'Provide a cover or PDF file');
 export const validateUploads: RequestHandler = async (req, _res, next) => {
   const result = uploads.safeParse(req.files);
