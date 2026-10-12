@@ -4,7 +4,7 @@ import { AppError } from './errorHandler.js';
 
 // ── Limits ────────────────────────────────────────────────────────────────────
 const MAX_IMAGE_SIZE = 5 * 1024 * 1024;  // 5 MB
-const MAX_PDF_SIZE   = 50 * 1024 * 1024; // 50 MB
+const MAX_PDF_SIZE   = 100 * 1024 * 1024; // 100 MB
 
 // ── File filters ──────────────────────────────────────────────────────────────
 function imageFilter(
